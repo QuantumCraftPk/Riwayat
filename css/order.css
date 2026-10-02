@@ -160,3 +160,9 @@
 .kidages:empty{display:none}
 .kidage label{display:block;font-size:.95rem;color:var(--mute);margin-bottom:4px;text-transform:none;letter-spacing:normal;font-family:'Cormorant Garamond',serif}
 .hint{margin:10px 0 0;color:var(--gold2);font-family:'Cinzel',serif;font-size:.8rem;letter-spacing:.08em}
+
+/* estimated time box */
+.eta{max-width:420px;margin:16px auto 6px;padding:14px 18px;border:1px solid var(--gold);background:rgba(214,168,79,.08);text-align:center}
+.eta-t{display:block;font:500 12px Cinzel,serif;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.eta-v{display:block;font:600 30px Cinzel,serif;color:var(--gold2);margin:4px 0}
+.eta small{display:block;color:var(--ivory);font-size:16px;line-height:1.35}

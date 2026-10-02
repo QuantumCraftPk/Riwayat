@@ -23,9 +23,9 @@
   var ITEMS = {};
   M.categories.forEach(function (c) { c.groups.forEach(function (g) { g.items.forEach(function (it) {
     if (it.variants && it.variants.length > 1) it.variants.forEach(function (v) {
-      ITEMS[it.id + '|' + v.label] = { key: it.id + '|' + v.label, name: it.name + ' (' + v.label + ')', price: v.price, kind: 'item' };
+      ITEMS[it.id + '|' + v.label] = { key: it.id + '|' + v.label, name: it.name + ' (' + v.label + ')', price: v.price, kind: 'item', preorder: !!it.preorder };
     });
-    else ITEMS[it.id] = { key: it.id, name: it.name, price: it.price, kind: 'item' };
+    else ITEMS[it.id] = { key: it.id, name: it.name, price: it.price, kind: 'item', preorder: !!it.preorder };
   }); }); });
 
   /* ---------- state ---------- */
@@ -44,7 +44,7 @@
   }
   function lines() {
     return Object.keys(S.cart).filter(function (k) { return ITEMS[k] && S.cart[k] > 0; }).map(function (k) {
-      var i = ITEMS[k]; return { key: k, name: i.name, price: i.price, kind: i.kind, days: i.days, qty: S.cart[k], total: i.price * S.cart[k] };
+      var i = ITEMS[k]; return { key: k, name: i.name, price: i.price, kind: i.kind, days: i.days, preorder: i.preorder, qty: S.cart[k], total: i.price * S.cart[k] };
     });
   }
   function totals() {
@@ -52,6 +52,24 @@
     var gst = Math.round(sub * GST_RATE);
     var del = (S.type === 'delivery' && sub > 0) ? DELIVERY_FEE : 0;
     return { sub: sub, gst: gst, del: del, total: sub + gst + del };
+  }
+  /* ---------- time estimate (never more than 60 minutes) ---------- */
+  var MAX_WAIT = 60;
+  function clock(d) { return fmtTime(d.getHours() * 60 + d.getMinutes()); }
+  function etaFor(o, placed) {
+    var n = o.lines.reduce(function (a, l) { return a + l.qty; }, 0);
+    var pre = o.lines.some(function (l) { return l.preorder; });
+    var add = function (m) { return new Date(placed.getTime() + m * 60000); };
+    if (pre) return { kind: 'preorder', title: 'We will confirm your time', text: 'Your order contains a pre-order item (24 hours notice). Our team will call you to confirm the exact time.' };
+    if (o.type === 'delivery') {
+      var lo = Math.min(MAX_WAIT - 10, 40 + n);
+      return { kind: 'delivery', title: 'Estimated delivery', value: 'By ' + clock(add(MAX_WAIT)), text: 'About ' + lo + '–' + MAX_WAIT + ' minutes from now (' + clock(add(lo)) + ' to ' + clock(add(MAX_WAIT)) + '). Delivery never takes longer than ' + MAX_WAIT + ' minutes.', minMinutes: lo, maxMinutes: MAX_WAIT };
+    }
+    if (o.details.time && o.details.time !== 'asap') {
+      return { kind: 'scheduled', title: 'Pickup time', value: fmtTime(+o.details.time), text: 'Your order will be ready at your chosen time.', minMinutes: null, maxMinutes: null };
+    }
+    var m = Math.min(45, 20 + 2 * n);
+    return { kind: 'pickup', title: 'Ready for pickup at', value: clock(add(m)), text: 'About ' + m + ' minutes from now. Your order will be ready within ' + MAX_WAIT + ' minutes at the latest.', minMinutes: m, maxMinutes: MAX_WAIT };
   }
   function count() { return lines().reduce(function (a, l) { return a + l.qty; }, 0); }
   var TYPE_NAME = { dine: 'Dine In', pickup: 'Takeaway · Pickup', delivery: 'Takeaway · Delivery' };
@@ -234,7 +252,7 @@
       var tl = slots(ymd(new Date()), 'pickup');
       body = '<div class="formcard"><div class="row2">' + field('xName', 'Your name', '<input id="xName" autocomplete="name" value="' + esc(d.name) + '">') + field('xPhone', 'Phone', '<input id="xPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="03XX XXXXXXX" value="' + esc(d.phone) + '">') + '</div>' +
         (S.type === 'delivery' ? field('xAddr', 'Delivery address', '<textarea id="xAddr" autocomplete="street-address" placeholder="House / flat, street, area, city">' + esc(d.address) + '</textarea>') :
-          field('xTime', 'Pickup time (today)', '<select id="xTime"><option value="asap">As soon as possible (about 30 min)</option>' + slotOptions(tl, d.time) + '</select>')) +
+          field('xTime', 'Pickup time (today)', '<select id="xTime"><option value="asap">As soon as possible (ready in about 20–45 min)</option>' + slotOptions(tl, d.time) + '</select>')) +
         field('xNotes', 'Notes (optional)', '<textarea id="xNotes" placeholder="Anything we should know?">' + esc(d.notes) + '</textarea>') + '</div>';
     }
     return head(S.type === 'delivery' ? 'Delivery Details' : 'Pickup Details', '') + body + nav(true, 'Continue →');
@@ -243,7 +261,7 @@
   function summaryHtml(o) {
     var d = [];
     d.push(['Order type', TYPE_NAME[o.type]]);
-    d.push(['Name', o.details.name]); d.push(['Phone', o.details.phone]); if (o.type === 'delivery') d.push(['Address', o.details.address]); else d.push(['Pickup', o.details.time === 'asap' ? 'As soon as possible (about 30 min)' : 'Today, ' + fmtTime(+o.details.time)]);
+    d.push(['Name', o.details.name]); d.push(['Phone', o.details.phone]); if (o.type === 'delivery') d.push(['Address', o.details.address]); else d.push(['Pickup', o.details.time === 'asap' ? 'As soon as possible (ready in about 20–45 min)' : 'Today, ' + fmtTime(+o.details.time)]);
     if (o.details.notes) d.push(['Notes', o.details.notes]);
     var t = o.totals;
     return '<div class="sumbox"><h3>Details</h3><dl>' + d.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl></div>' +
@@ -261,10 +279,14 @@
       '<div class="sumbox" style="margin-top:22px"><h3>Your reservation</h3><dl><dt>Date</dt><dd>' + esc(fmtDate(o.date)) + '</dd><dt>Time</dt><dd>' + fmtTime(+o.time) + '</dd><dt>Guests</dt><dd>' + esc(guestsText(o)) + '</dd><dt>Cuisine</dt><dd>' + esc(c ? c[1] : o.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(st ? st[1] : o.seating) + (o.seating === 'vvip' ? ' <em style="color:var(--gold2)">(Rs 2,500 additional)</em>' : '') + '</dd></dl></div>' +
       '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="print">Print</button><button class="btn btn-ghost" onclick="location.href=\'index.html\'">Back to website</button><button class="btn btn-gold" data-act="new">Make another booking</button></div>';
   }
+  function etaHtml(o) {
+    var e = o.eta; if (!e) return '';
+    return '<div class="eta"><span class="eta-t">' + esc(e.title) + '</span>' + (e.value ? '<b class="eta-v">' + esc(e.value) + '</b>' : '') + '<small>' + esc(e.text) + '</small></div>';
+  }
   views.done = function () {
     var o = S.done;
     if (o.kind === 'reservation') return reservationDone(o);
-    return '<div class="done-card"><div class="tick" aria-hidden="true">✓</div><h2 id="stepTitle" tabindex="-1">Order Confirmed</h2><p class="lead" style="margin-bottom:8px">Thank you, ' + esc(o.type === 'dine' ? o.dine.name : o.details.name) + '!</p><div class="oid">' + esc(o.id) + '</div><p class="lead" style="margin:6px 0 0">Final amount: <b style="color:var(--gold2)">' + money(o.totals.total) + '</b></p><p class="note">Simulated order — no payment was taken and nothing was sent to a kitchen.</p></div><div style="max-width:760px;margin:22px auto 0">' + summaryHtml(o) + '</div>' +
+    return '<div class="done-card"><div class="tick" aria-hidden="true">✓</div><h2 id="stepTitle" tabindex="-1">Order Confirmed</h2><p class="lead" style="margin-bottom:8px">Thank you, ' + esc(o.type === 'dine' ? o.dine.name : o.details.name) + '!</p><div class="oid">' + esc(o.id) + '</div>' + etaHtml(o) + '<p class="lead" style="margin:6px 0 0">Final amount: <b style="color:var(--gold2)">' + money(o.totals.total) + '</b></p><p class="note">Simulated order — no payment was taken and nothing was sent to a kitchen.</p></div><div style="max-width:760px;margin:22px auto 0">' + summaryHtml(o) + '</div>' +
       '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="print">Print</button><button class="btn btn-ghost" onclick="location.href=\'index.html\'">Back to website</button><button class="btn btn-gold" data-act="new">Place another order</button></div>';
   };
 
@@ -336,14 +358,16 @@
     r.id = 'RV-' + ymd(new Date()).replace(/-/g, '').slice(2) + '-' + Math.floor(1000 + Math.random() * 9000);
     r.placedAt = new Date().toISOString();
     try { var all = JSON.parse(localStorage.getItem('riwayat_reservations') || '[]'); all.push(r); localStorage.setItem('riwayat_reservations', JSON.stringify(all)); } catch (e) { /* demo only */ }
+    if (window.RiwayatSync) window.RiwayatSync.send('reservation', r);
     S.done = r; try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
     renderStage(); window.scrollTo(0, 0); var h = $('#stepTitle'); if (h) h.focus({ preventScroll: true });
   }
   function confirmOrder() {
     var o = draft(); // final amount is calculated only now, on explicit approval
     o.id = 'RW-' + ymd(new Date()).replace(/-/g, '').slice(2) + '-' + Math.floor(1000 + Math.random() * 9000);
-    o.placedAt = new Date().toISOString();
+    var now = new Date(); o.placedAt = now.toISOString(); o.eta = etaFor(o, now);
     try { var all = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); all.push(o); localStorage.setItem(ORDERS_KEY, JSON.stringify(all)); } catch (e) { /* demo only */ }
+    if (window.RiwayatSync) window.RiwayatSync.send('order', o);
     S.done = o; S.cart = {}; try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
     renderStage(); window.scrollTo(0, 0); var h = $('#stepTitle'); if (h) h.focus({ preventScroll: true });
   }
