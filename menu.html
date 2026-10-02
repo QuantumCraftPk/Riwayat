@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Menu · Riwayat روایت Restaurant</title>
+<meta name="description" content="The Riwayat menu: royal feasts, buffets, desi, Arabic, continental, Chinese, desserts and drinks. Conceptual demo website.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400&family=Noto+Nastaliq+Urdu:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/chatbot.css">
+</head>
+<body>
+
+<header class="site-header" id="top">
+  <a class="brand" href="index.html" aria-label="Riwayat home"><img src="assets/img/logo.png" alt="Riwayat Restaurant"></a>
+  <button class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="nav"><span></span><span></span><span></span></button>
+  <nav id="nav" class="nav">
+    <a href="index.html">Home</a>
+    <a href="index.html#about">About</a>
+    <a href="menu.html" aria-current="page">Menu</a>
+    <a href="index.html#gallery">Gallery</a>
+    <a href="index.html#celebrations">Events</a>
+    <a href="index.html#contact">Contact</a>
+    <a href="order.html" class="btn btn-gold nav-cta">Order Now</a>
+  </nav>
+</header>
+
+<main>
+  <section class="section section-alt" id="menu" style="padding-top:110px">
+    <div class="wrap">
+      <header class="sec-head">
+        <p class="eyebrow" lang="ur" dir="rtl">ہمارا مینو</p>
+        <h1 style="font:500 clamp(28px,5vw,44px) Cinzel,serif;color:var(--gold2);margin:0">The Menu</h1>
+        <div class="orn" aria-hidden="true"></div>
+        <p class="sub">Royal feasts, buffets, desi, Arabic, continental and more.</p>
+        <div class="menu-actions">
+          <a href="assets/Riwayat-Menu.pdf" class="btn btn-ghost" download>⬇ Download Menu (PDF)</a>
+          <a href="order.html" class="btn btn-gold">Order Online</a>
+        </div>
+      </header>
+      <div class="tabs-wrap"><div class="tabs" id="menuTabs" role="tablist" aria-label="Menu categories"></div></div>
+      <div id="menuView" class="menu-view" aria-live="polite"></div>
+      <p class="note center" id="taxNote"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <img src="assets/img/logo.png" alt="" class="foot-logo">
+  <p>© <span id="yr"></span> Riwayat Restaurant · Conceptual project</p>
+</footer>
+
+<script src="data/menu-data.js"></script>
+<script src="js/menu-page.js"></script>
+<script src="js/chatbot.js"></script>
+</body>
+</html>

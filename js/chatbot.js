@@ -6,8 +6,8 @@
   var ADDRESS = 'MM Alam Road, Gulberg, Lahore';
   var PHONE = '0306-0005226', EMAIL = 'management@riwayat.com';
   var GST = 16, DELIVERY = 200;
-  var onOrderPage = /order\.html$/i.test(location.pathname);
-  var menuHref = onOrderPage ? 'index.html#menu' : '#menu';
+  var onOrderPage = !document.getElementById('gallery');
+  var menuHref = 'menu.html';
   var galleryHref = onOrderPage ? 'index.html#gallery' : '#gallery';
 
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
@@ -86,7 +86,7 @@
     { t: /gst|tax|delivery (fee|charge)|charges|service charge/i, f: function () { return r('Menu prices <b>exclude GST</b>. At the bill we add <b>' + GST + '% GST</b>, plus a <b>' + money(DELIVERY) + '</b> delivery fee for delivery orders.', ['Takeaway & delivery']); } },
     { t: /deliver|takeaway|take away|pick ?up|order|parcel|home delivery/i, f: function () { return r('You can order for <b>pickup</b> or <b>delivery</b>:<ol><li>Choose <b>Takeaway</b>, then Pickup or Delivery</li><li>Add dishes to your cart</li><li>Review the bill (' + GST + '% GST' + ('; delivery fee ' + money(DELIVERY)) + ')</li><li>Enter your details and press <b>Confirm Order</b></li></ol>This is a demo — no real payment is taken. ' + ACT.take, ['GST & delivery fee', 'View menu']); } },
     { t: /pay|card|cash|jazzcash|easypaisa|checkout/i, f: function () { return r('This website is a <b>conceptual demo</b>, so no real payment is taken and no order is sent to a kitchen. You can still go through the whole flow to see how it would work.', ['Takeaway & delivery', 'Book a table']); } },
-    { t: /pdf|download|printable/i, f: function () { return r('Use the <b>Download Menu (PDF)</b> button at the top of the ' + link(menuHref, 'Menu section') + ' to save or print the full menu.'); } },
+    { t: /pdf|download|printable/i, f: function () { return r('Use the <b>Download Menu (PDF)</b> button on the ' + link(menuHref, 'Menu page') + ' to save or print the full menu.'); } },
     { t: /gallery|photo|picture|image|pics/i, f: function () { return r('Take a look at our ' + link(galleryHref, 'photo gallery') + ' — the main dining hall, courtyard, rooftop, live kitchens and more.'); } },
     { t: /buffet|dinner|hi-?tea|brunch|breakfast|eat as much/i, f: function (q) { return buffetReply(q); } },
     { t: /feast|platter|combo|mandi|sharing|banquet|whole lamb/i, f: function (q) { return categoryReply(cat('feasts'), q); } },
