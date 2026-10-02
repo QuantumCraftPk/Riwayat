@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Riwayat روایت · Restaurant, MM Alam Road Lahore</title>
+<meta name="description" content="Riwayat — Tradition, Reimagined. Fine dining, buffets and live kitchens on MM Alam Road, Lahore. (Conceptual demo website.)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400&family=Noto+Nastaliq+Urdu:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/chatbot.css">
+<link rel="stylesheet" href="css/promo.css">
+</head>
+<body>
+
+<header class="site-header" id="top">
+  <a class="brand" href="#top" aria-label="Riwayat home"><img src="assets/img/logo.png" alt="Riwayat Restaurant"></a>
+  <button class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="nav"><span></span><span></span><span></span></button>
+  <nav id="nav" class="nav">
+    <a href="#top">Home</a>
+    <a href="#about">About</a>
+    <a href="#menu">Menu</a>
+    <a href="#gallery">Gallery</a>
+    <a href="#celebrations">Events</a>
+    <a href="#contact">Contact</a>
+    <a href="order.html" class="btn btn-gold nav-cta">Order Now</a>
+  </nav>
+</header>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-inner">
+      <img class="hero-logo" src="assets/img/logo.png" alt="Riwayat روایت Restaurant">
+      <p class="tagline">Tradition, Reimagined.</p>
+      <p class="tagline-ur" lang="ur" dir="rtl">روایت، نئے انداز میں</p>
+      <div class="hero-actions">
+        <a href="order.html" class="btn btn-gold">Order Now</a>
+        <a href="#menu" class="btn btn-ghost">View Menu</a>
+      </div>
+      <p class="hero-note">Dine In · Pickup · Delivery</p>
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section class="section" id="about">
+    <div class="wrap about">
+      <div class="about-text">
+        <p class="eyebrow" lang="ur" dir="rtl">ہماری کہانی</p>
+        <h2>A Feast Steeped in Tradition</h2>
+        <div class="orn" aria-hidden="true"></div>
+        <p>Riwayat means <em>tradition</em>. Our kitchens honour the grand dastarkhwan of the Mughal table — slow-cooked handis, charcoal-grilled BBQ, fragrant biryani and pulao — alongside Arabic, Continental and Chinese favourites.</p>
+        <p>Set in a courtyard of lantern light, jali screens and fountains on MM Alam Road, Lahore, Riwayat is made for family dinners, grand buffets, private dining and rooftop evenings.</p>
+        <ul class="facts">
+          <li><strong>4</strong><span>Buffets</span></li>
+          <li><strong>200+</strong><span>Dishes</span></li>
+          <li><strong>3</strong><span>Live kitchens</span></li>
+        </ul>
+      </div>
+      <figure class="about-img"><img src="assets/gallery/grand-entrance.jpg" alt="Riwayat grand entrance" loading="lazy"></figure>
+    </div>
+  </section>
+
+  <!-- MENU -->
+  <section class="section section-alt" id="menu">
+    <div class="wrap">
+      <header class="sec-head">
+        <p class="eyebrow" lang="ur" dir="rtl">ہمارا مینو</p>
+        <h2>The Menu</h2>
+        <div class="orn" aria-hidden="true"></div>
+        <p class="sub">Royal feasts, buffets, desi, Arabic, continental and more.</p>
+        <div class="menu-actions">
+          <a href="assets/Riwayat-Menu.pdf" class="btn btn-ghost" download>⬇ Download Menu (PDF)</a>
+          <a href="order.html" class="btn btn-gold">Order Online</a>
+        </div>
+      </header>
+      <div class="tabs-wrap"><div class="tabs" id="menuTabs" role="tablist" aria-label="Menu categories"></div></div>
+      <div id="menuView" class="menu-view" aria-live="polite"></div>
+      <p class="note center" id="taxNote"></p>
+    </div>
+  </section>
+
+  <!-- GALLERY -->
+  <section class="section" id="gallery">
+    <div class="wrap">
+      <header class="sec-head">
+        <p class="eyebrow" lang="ur" dir="rtl">گیلری</p>
+        <h2>Gallery</h2>
+        <div class="orn" aria-hidden="true"></div>
+        <p class="sub">A look inside Riwayat — concept visuals.</p>
+      </header>
+      <div class="gallery" id="galleryGrid"></div>
+    </div>
+  </section>
+
+  <!-- CELEBRATIONS -->
+  <section class="section section-alt" id="celebrations">
+    <div class="wrap">
+      <header class="sec-head">
+        <p class="eyebrow" lang="ur" dir="rtl">تقریبات</p>
+        <h2>Celebrate with Riwayat</h2>
+        <div class="orn" aria-hidden="true"></div>
+        <p class="sub">Birthday parties and engagement ceremonies — <b>free décor</b>, choose from <b>4 themes</b> each.</p>
+      </header>
+      <div class="party-block">
+        <h3 class="party-title">🎂 Birthday Parties</h3>
+        <div class="theme-grid" id="birthdayGrid"></div>
+      </div>
+      <div class="party-block">
+        <h3 class="party-title">💍 Engagement Ceremonies</h3>
+        <div class="theme-grid eng" id="engagementGrid"></div>
+      </div>
+      <div class="party-cta">
+        <p>Minimum guest numbers vary by theme. Call us to plan your celebration.</p>
+        <a class="btn btn-gold" href="tel:+923060005226">Call 0306-0005226</a>
+        <a class="btn btn-ghost" href="mailto:management@riwayat.com">Email us</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TEAM -->
+  <section class="section" id="team">
+    <div class="wrap">
+      <header class="sec-head">
+        <p class="eyebrow" lang="ur" dir="rtl">ہماری ٹیم</p>
+        <h2>The Riwayat Team</h2>
+        <div class="orn" aria-hidden="true"></div>
+        <p class="sub">Hospitality dressed in Riwayat style.</p>
+      </header>
+      <div class="team-grid">
+        <figure><img src="assets/team/male-staff.jpg" alt="Riwayat male staff uniform" loading="lazy"><figcaption>Male Staff</figcaption></figure>
+        <figure><img src="assets/team/female-staff.jpg" alt="Riwayat female staff uniform" loading="lazy"><figcaption>Female Staff</figcaption></figure>
+        <figure><img src="assets/team/manager.jpg" alt="Riwayat manager uniform" loading="lazy"><figcaption>Manager</figcaption></figure>
+        <figure><img src="assets/team/manageress.jpg" alt="Riwayat manageress uniform" loading="lazy"><figcaption>Manageress</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="section section-alt" id="contact">
+    <div class="wrap contact">
+      <header class="sec-head">
+        <p class="eyebrow" lang="ur" dir="rtl">رابطہ</p>
+        <h2>Visit Us</h2>
+        <div class="orn" aria-hidden="true"></div>
+      </header>
+      <div class="contact-grid">
+        <div class="card"><h3>Location</h3><p>MM Alam Road<br>Gulberg, Lahore, Pakistan</p></div>
+        <div class="card"><h3>Hours</h3><p>Monday – Friday<br><b>12:00 pm – 11:00 pm</b></p><p style="margin-top:8px">Saturday &amp; Sunday<br><b>8:00 am – 12:00 am</b></p></div>
+        <div class="card"><h3>Reservations</h3><p><a href="tel:+923060005226">0306-0005226</a><br><a href="mailto:management@riwayat.com">management@riwayat.com</a></p></div>
+      </div>
+      <p class="note center">This is a conceptual demo website. No real orders, payments or bookings are processed.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <img src="assets/img/logo.png" alt="" class="foot-logo">
+  <p>© <span id="yr"></span> Riwayat Restaurant · Conceptual project</p>
+</footer>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lb-close" aria-label="Close">×</button>
+  <img alt="" id="lbImg"><p id="lbCap"></p>
+</div>
+
+<script src="data/menu-data.js"></script>
+<script src="js/main.js"></script>
+<script src="data/celebrations-data.js"></script>
+<script src="js/celebrations.js"></script>
+<script src="js/chatbot.js"></script>
+<script src="js/promo.js"></script>
+</body>
+</html>
