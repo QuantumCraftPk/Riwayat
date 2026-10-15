@@ -92,3 +92,22 @@
 .tip{position:fixed;z-index:60;pointer-events:none;background:#0f0904;border:1px solid var(--gold);padding:6px 10px;max-width:260px}
 .tip b{display:block;color:var(--gold2);font:600 16px Cinzel,serif}.tip span{display:block;color:#c3b99f;font-size:14px}
 @media(max-width:760px){.two{grid-template-columns:1fr}}
+
+/* printable slip */
+#slip{display:none}
+@page{size:80mm auto;margin:3mm}
+@media print{
+  body>*:not(#slip){display:none!important}
+  html,body{background:#fff!important;color:#000!important}
+  #slip{display:block!important;width:74mm;margin:0;color:#000;background:#fff;font:14px/1.35 "Courier New",monospace}
+  #slip .sl-h{text-align:center;font:700 22px Georgia,serif;letter-spacing:.2em}
+  #slip .sl-t{text-align:center;font-weight:700;letter-spacing:.12em;margin-top:2px}
+  #slip .sl-sep{border-top:2px dashed #000;margin:7px 0}
+  #slip .sl-big{text-align:center;font-weight:700;font-size:20px;border:2px solid #000;padding:3px 0;margin:6px 0}
+  #slip .sl-r{display:flex;justify-content:space-between;gap:8px}
+  #slip .sl-r b{text-align:right}
+  #slip .sl-i{font-size:16px;margin:4px 0}
+  #slip .sl-n{border:2px solid #000;padding:4px 6px;font-size:15px}
+  #slip .sl-addr{margin-top:4px}#slip .sl-addr span{display:block}#slip .sl-addr b{display:block;font-size:15px}
+  #slip .sl-f{text-align:center;font-size:12px}
+}

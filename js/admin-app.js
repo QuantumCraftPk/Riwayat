@@ -60,7 +60,7 @@
       S.docs.set = U.merge(DEF, s || {});
       S.first = { menu: !(m && m.categories), cel: !(c && c.birthday), set: !s };
       if (!isAdminRole()) return;
-      return FS.getAuth('config/staff').then(function (d) { S.staff = d && Array.isArray(d.emails) ? d.emails.slice() : []; });
+      return FS.getAuth('config/staff').then(function (d) { S.staff = d && Array.isArray(d.emails) ? d.emails.slice() : []; S.staffErr = false; }, function () { S.staff = []; S.staffErr = true; });
     });
   }
   function loadRecords() {
@@ -134,7 +134,7 @@
           (o.type === 'delivery' ? '<dt>Address</dt><dd>' + esc(d.address) + '</dd>' : '<dt>Pickup</dt><dd>' + (d.time === 'asap' ? 'As soon as possible' : 'Today ' + esc(fmtTime(d.time))) + '</dd>') +
           '<dt>Items</dt><dd>' + (o.lines || []).map(function (l) { return esc(l.qty + ' × ' + l.name); }).join('<br>') + '</dd>' + (d.notes ? '<dt>Notes</dt><dd>' + esc(d.notes) + '</dd>' : '') +
           '<dt>Total</dt><dd><b>' + money(t.total) + '</b> (sub ' + money(t.sub) + ', GST ' + money(t.gst) + (t.del ? ', delivery ' + money(t.del) : '') + ')</dd>' + (e.value ? '<dt>Promised</dt><dd>' + esc(e.title + ' ' + e.value) + '</dd>' : '') + '</dl>' +
-          (isAdminRole() ? '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button></div>' : '') + '</div>';
+          '<div class="row" style="margin:8px 0 0"><button class="btn btn-gold btn-sm fit" data-act="print" data-kind="order" data-doc="' + esc(o._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button>' : '') + '</div></div>';
       }).join('') || '<p class="mute">No orders to show.</p>');
   };
   V.res = function () {
@@ -146,15 +146,37 @@
           '<dt>Placed</dt><dd>' + esc(stamp(r._placed)) + '</dd><dt>Guest</dt><dd>' + esc(r.name || '(not given)') + (r.phone ? ' · <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a>' : '') + '</dd>' +
           '<dt>When</dt><dd>' + esc(r.date) + ' at ' + esc(fmtTime(r.time)) + '</dd><dt>Guests</dt><dd>' + (r.guests || (r.adults + (r.kids || []).length)) + ' (' + r.adults + ' adults' + ((r.kids || []).length ? ', ' + r.kids.length + ' kids, ages ' + esc(ages.join(', ')) : '') + ')</dd>' +
           '<dt>Cuisine</dt><dd>' + esc(CUISINE[r.cuisine] || r.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(SEAT[r.seating] || r.seating) + '</dd></dl>' +
-          (isAdminRole() ? '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button></div>' : '') + '</div>';
+          '<div class="row" style="margin:8px 0 0"><button class="btn btn-gold btn-sm fit" data-act="print" data-kind="reservation" data-doc="' + esc(r._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button>' : '') + '</div></div>';
       }).join('') || '<p class="mute">No reservations to show.</p>');
   };
 
 
+  /* printable kitchen slip (80 mm receipt width) */
+  function slipHtml(kind, o) {
+    var line = '<div class="sl-sep"></div>', row = function (k, v) { return v ? '<div class="sl-r"><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>' : ''; };
+    var head = '<div class="sl-h">RIWAYAT</div><div class="sl-t">' + (kind === 'order' ? 'KITCHEN ORDER' : 'TABLE BOOKING') + '</div>' + line;
+    var foot = line + '<div class="sl-f">Printed ' + esc(stamp(new Date().toISOString())) + '</div>';
+    if (kind === 'order') {
+      var d = o.details || {}, e = o.eta || {}, del = o.type === 'delivery';
+      return head + '<div class="sl-big">' + (del ? 'DELIVERY' : 'PICKUP') + '</div>' + row('Order', o.id) + row('Placed', stamp(o._placed)) + row(del ? 'Deliver by' : 'Ready at', e.value ? e.value.replace(/^By /, '') : (d.time && d.time !== 'asap' ? fmtTime(d.time) : '')) + line +
+        (o.lines || []).map(function (l) { return '<div class="sl-i"><b>' + esc(l.qty) + ' ×</b> ' + esc(l.name) + '</div>'; }).join('') + line +
+        (d.notes ? '<div class="sl-n"><b>NOTES:</b> ' + esc(d.notes) + '</div>' + line : '') +
+        row('Customer', d.name) + row('Phone', d.phone) + (del ? '<div class="sl-addr"><span>Address</span><b>' + esc(d.address) + '</b></div>' : '') + foot;
+    }
+    var ages = (o.kids || []).map(function (a) { return String(a) === '0' ? 'under 1' : a; });
+    return head + '<div class="sl-big">' + esc(o.date) + ' · ' + esc(fmtTime(o.time)) + '</div>' + row('Booking', o.id) + row('Guest', o.name) + row('Phone', o.phone) + line +
+      row('Guests', (o.guests || (o.adults + (o.kids || []).length)) + ' (' + o.adults + ' adults' + ((o.kids || []).length ? ', ' + o.kids.length + ' kids: ' + ages.join(', ') : '') + ')') + row('Seating', SEAT[o.seating] || o.seating) + row('Cuisine', CUISINE[o.cuisine] || o.cuisine) + row('Status', LBL[o._status]) + foot;
+  }
+  function printSlip(kind, id) {
+    var o = (kind === 'order' ? S.orders : S.res).filter(function (x) { return x._doc === id; })[0]; if (!o) return;
+    var el = document.getElementById('slip'); if (!el) { el = document.createElement('div'); el.id = 'slip'; document.body.appendChild(el); }
+    el.innerHTML = slipHtml(kind, o); window.print();
+  }
+
   /* staff accounts */
   V.staff = function () {
     var list = S.staff || [];
-    return '<h2>Staff accounts</h2><p class="mute">Staff can see orders and reservations and change their status. They cannot see sales, edit the menu or prices, delete anything or download Excel files.</p>' +
+    return '<h2>Staff accounts</h2>' + (S.staffErr ? '<div class="adm-err">The staff list could not be read. Publish the latest rules from docs/firestore.rules in Firebase, then reload this page.</div>' : '') + '<p class="mute">Staff can see orders and reservations and change their status. They cannot see sales, edit the menu or prices, delete anything or download Excel files.</p>' +
       '<div class="ed"><h3 style="margin-top:0">Add a staff member</h3><ol class="mute" style="margin:0 0 10px 18px;padding:0"><li>In Firebase → Authentication → Users, click <b>Add user</b> and create their email and password.</li><li>Type the same email below and click Add.</li><li>Give them the page address and their password. They sign in on this same page.</li></ol>' +
       '<div class="row"><div><label>Staff email</label><input id="stEmail" type="email" placeholder="name@example.com"></div><div class="fit"><button class="btn btn-gold btn-sm" data-act="addstaff">Add</button></div></div></div>' +
       '<div class="ed"><h3 style="margin-top:0">Current staff (' + list.length + ')</h3>' + (list.length ? list.map(function (em, i) { return '<div class="row" style="align-items:center"><div>' + esc(em) + '</div><div class="fit"><button class="btn btn-ghost btn-sm" data-act="rmstaff" data-i="' + i + '">Remove access</button></div></div>'; }).join('') : '<p class="mute" style="margin:0">No staff yet.</p>') + '</div>' +
@@ -404,6 +426,7 @@
         if (cur.indexOf(em) >= 0) { toast('Already in the list.', true); break; }
         saveStaff(cur.concat([em]), 'Added. They can sign in once their login exists in Firebase.'); break;
       case 'rmstaff': var ri = +el.getAttribute('data-i'); if (confirm('Remove access for ' + S.staff[ri] + '?')) saveStaff(S.staff.filter(function (x, j) { return j !== ri; }), 'Access removed.'); break;
+      case 'print': printSlip(el.getAttribute('data-kind'), el.getAttribute('data-doc')); break;
       case 'refresh': refresh(false); break;
       case 'xlsx': exportXlsx(); break;
       case 'bulk': bulkApply(); break;
