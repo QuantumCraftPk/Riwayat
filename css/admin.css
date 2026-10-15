@@ -115,3 +115,12 @@
 .capwarn{color:#d95926;font-weight:600}
 .capl{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
 .chk{display:inline-flex;align-items:center;gap:4px;margin-right:10px;cursor:pointer}
+
+/* new order alerts */
+.alertbar{position:sticky;top:54px;z-index:19;display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 18px;background:#e2bb62;color:#1a1006;border-bottom:2px solid #a8801f;animation:alpulse 1.6s ease-in-out infinite}
+.alertbar .al-t{flex:1 1 260px;font-size:17px}
+.alertbar .al-b{display:flex;gap:8px;flex-wrap:wrap}
+.alertbar .btn-ghost{color:#1a1006;border-color:#1a1006}
+.alertbar .btn-gold{background:#1a1006;color:#f0d28a;border-color:#1a1006}
+@keyframes alpulse{50%{background:#f0cf7a}}
+@media (prefers-reduced-motion:reduce){.alertbar{animation:none}}

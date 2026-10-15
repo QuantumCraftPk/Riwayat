@@ -32,7 +32,7 @@
 
   /* ---------- login ---------- */
   function showLogin(msg) {
-    clearInterval(timer); $('#login').hidden = false; $('#app').hidden = true; $('#btnOut').hidden = true; $('#who').textContent = '';
+    clearInterval(timer); if (window.RiwayatAlerts) window.RiwayatAlerts.reset(); $('#login').hidden = false; $('#app').hidden = true; $('#btnOut').hidden = true; $('#who').textContent = '';
     var e = $('#lErr'); e.hidden = !msg; e.textContent = msg || '';
   }
   function friendly(e) {
@@ -69,12 +69,22 @@
       S.orders = r[0].map(f('order')); S.res = r[1].map(f('reservation'));
     });
   }
+  function alerts() {
+    if (!window.RiwayatAlerts) return;
+    window.RiwayatAlerts.check(S, {
+      goto: function (tab) { S.tab = tab; drawTabs(); draw(); window.scrollTo(0, 0); },
+      describe: function (kind, r) {
+        if (kind === 'order') { var d = r.details || {}; return r.id + ' · ' + (d.name || '') + ' · ' + money((r.totals || {}).total) + ' · ' + (TYPE[r.type] || r.type); }
+        return r.id + ' · ' + (r.name || 'Guest') + ' · ' + r.date + ' at ' + fmtTime(r.time) + ' · ' + (r.guests || r.adults) + ' guests';
+      }
+    });
+  }
   function start() {
     var a = FS.session(); ROLE = a.email.toLowerCase() === String(FS.adminEmail).toLowerCase() ? 'admin' : 'staff'; S.tab = isAdminRole() ? S.tab : (S.tab === 'res' ? 'res' : 'orders'); $('#login').hidden = true; $('#app').hidden = false; $('#btnOut').hidden = false; $('#who').textContent = a.email + (isAdminRole() ? '' : ' (staff)');
     $('#view').innerHTML = '<p class="mute">Loading…</p>';
     Promise.all([loadSite(), loadRecords()]).then(function () {
-      S.loaded = true; drawTabs(); draw();
-      clearInterval(timer); timer = setInterval(function () { if (S.tab === 'orders' || S.tab === 'res' || S.tab === 'dash') refresh(true); }, 20000);
+      S.loaded = true; alerts(); drawTabs(); draw();
+      clearInterval(timer); timer = setInterval(function () { refresh(true); }, 15000);
     }).catch(function (e) {
       if (!isAdminRole() && e && e.status === 403) { FS.signOut(); showLogin('This account has not been given access. Ask the administrator to add your email under Staff.'); return; }
       if (e && e.status === 401) { FS.signOut(); showLogin('Your session expired. Please sign in again.'); return; }
@@ -83,7 +93,7 @@
     });
   }
   function refresh(quiet) {
-    return loadRecords().then(function () { drawTabs(); if (S.tab === 'orders' || S.tab === 'res' || S.tab === 'dash') { var y = window.scrollY; draw(); window.scrollTo(0, y); } if (!quiet) toast('Updated'); }, function (e) { if (!quiet) toast(errMsg(e), true); });
+    return loadRecords().then(function () { alerts(); drawTabs(); if (S.tab === 'orders' || S.tab === 'res' || S.tab === 'dash') { var y = window.scrollY; draw(); window.scrollTo(0, y); } if (!quiet) toast('Updated'); }, function (e) { if (!quiet) toast(errMsg(e), true); });
   }
 
   /* ---------- save ---------- */
