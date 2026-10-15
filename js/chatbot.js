@@ -6,7 +6,7 @@
   var HOURS = { week: ST.hours.week.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.week.open) + ' to ' + U.clock(ST.hours.week.close), wknd: ST.hours.wknd.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.wknd.open) + ' to ' + U.clock(ST.hours.wknd.close) };
   var ADDRESS = ST.address;
   var PHONE = ST.phone, EMAIL = ST.email;
-  var GST = ST.gstPercent, DELIVERY = ST.deliveryFee, VVIP = ST.vvipCharge, MAXWAIT = ST.maxDeliveryMinutes;
+  var GST = ST.gstPercent, DELIVERY = ST.deliveryFee, VVIP = ST.vvipCharge, MAXWAIT = +ST.maxDeliveryMinutes || 60;
   var onOrderPage = !document.getElementById('gallery');
   var menuHref = 'menu.html';
   var galleryHref = onOrderPage ? 'index.html#gallery' : '#gallery';
@@ -45,7 +45,7 @@
   }
 
   /* ---------- replies ---------- */
-  var CHIPS_MAIN = ['What should I try?', 'Opening hours', 'Book a table', 'Buffet prices', 'Takeaway & delivery', 'Seating options'];
+  var CHIPS_MAIN = ['What should I try?', 'Opening hours', 'Book a table', 'Place an order', 'Buffet prices', 'Seating options'];
   function r(html, chips) { return { html: html, chips: chips }; }
   var ACT = {
     book: link('order.html?start=dine', 'Book a table →'),
@@ -170,7 +170,7 @@
   function numIn(q) { var m = q.match(/\d+/); if (m) return +m[0]; var w = q.toLowerCase().split(/\W+/).filter(function (x) { return NUMW[x]; })[0]; return w ? NUMW[w] : null; }
   function pick(list, q) { q = q.toLowerCase(); return list.filter(function (x) { return x[2].test(q); })[0] || null; }
   function startFlow() {
-    F = { step: 'date', d: { kids: [] } }; lastOffer = '';
+    O = null; F = { step: 'date', d: { kids: [] } }; lastOffer = '';
     return r('Happy to book a table for you. Which <b>date</b>? You can say “tomorrow”, “Friday” or “25 Oct”. (Type “cancel” any time to stop.)', ['Today', 'Tomorrow']);
   }
   function timeChips(sl) { var out = [], pref = [780, 1140, 1200, 1260]; pref.forEach(function (m) { if (sl.indexOf(m) >= 0) out.push(fmtT(m)); }); if (!out.length) sl.slice(0, 4).forEach(function (m) { out.push(fmtT(m)); }); return out; }
@@ -252,6 +252,161 @@
     }, function () { return r('I could not reach the restaurant just now, so nothing was sent. Please press “Yes, confirm” to try again.', ['Yes, confirm', 'Cancel']); });
   }
 
+  /* ---------- placing a takeaway order inside the chat ---------- */
+  var O = null, GSTR = (+GST || 0) / 100, OI = {};
+  M.categories.forEach(function (c) { c.groups.forEach(function (g) { g.items.forEach(function (it) {
+    var base = { id: it.id, base: it.name, desc: it.desc || '', preorder: !!it.preorder, soldOut: !!it.soldOut };
+    if (it.variants && it.variants.length > 1) it.variants.forEach(function (v) { OI[it.id + '|' + v.label] = { key: it.id + '|' + v.label, name: it.name + ' (' + v.label + ')', base: it.name, price: v.price, preorder: base.preorder, soldOut: base.soldOut, desc: base.desc }; });
+    else OI[it.id] = { key: it.id, name: it.name, base: it.name, price: it.price, preorder: base.preorder, soldOut: base.soldOut, desc: base.desc };
+  }); }); });
+  var CMD = /\b(place|an|the|order|orders|i|want|wanna|to|would|like|please|takeaway|take|away|delivery|pickup|food|can|could|get|me|a|my|start|make|new|for|some|add|give|chahiye|chahiye|karna|karni|hai|mujhe|kar|do|dena|karen|karein|ek)\b/g;
+  function oname(k) { return OI[k].name; }
+  function cartLines() { return Object.keys(O.cart).filter(function (k) { return OI[k] && O.cart[k] > 0; }).map(function (k) { var i = OI[k]; return { key: k, name: i.name, price: i.price, kind: 'item', preorder: i.preorder, qty: O.cart[k], total: i.price * O.cart[k] }; }); }
+  function cartTotals() {
+    var ls = cartLines(), sub = ls.reduce(function (a, l) { return a + l.total; }, 0), gst = Math.round(sub * GSTR), del = O.type === 'delivery' && sub > 0 ? DELIVERY : 0;
+    return { sub: sub, gst: gst, del: del, total: sub + gst + del };
+  }
+  function cartHtml(withBill) {
+    var ls = cartLines(), t = cartTotals();
+    if (!ls.length) return 'Your cart is empty.';
+    var h = '<ul>' + ls.map(function (l) { return '<li>' + l.qty + ' × ' + esc(l.name) + ' — ' + money(l.total) + (l.preorder ? ' <small>(pre-order)</small>' : '') + '</li>'; }).join('') + '</ul>';
+    if (!withBill) return h + 'Subtotal: <b>' + money(t.sub) + '</b> (+' + GST + '% GST)';
+    return h + 'Subtotal ' + money(t.sub) + '<br>GST (' + GST + '%) ' + money(t.gst) + (t.del ? '<br>Delivery fee ' + money(t.del) : '') + '<br><b>Total ' + money(t.total) + '</b>';
+  }
+  function findItems(text) {
+    var tk = tokens(text); if (!tk.length) return [];
+    var res = Object.keys(OI).map(function (k) {
+      var it = OI[k], n = it.name.toLowerCase(), d = it.desc.toLowerCase(), sc = 0, hit = 0;
+      tk.forEach(function (w) { var re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); if (re.test(n)) { sc += 3; hit++; } else if (re.test(d)) sc += 0.5; });
+      return { it: it, sc: sc, hit: hit };
+    }).filter(function (x) { return x.hit > 0; });
+    if (!res.length) return [];
+    var best = Math.max.apply(null, res.map(function (x) { return x.sc; }));
+    var top = res.filter(function (x) { return x.sc === best; }).map(function (x) { return x.it; });
+    // prefer dishes whose whole name is covered by the words typed
+    var exact = top.filter(function (i) { return i.base.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 1; }).every(function (w) { return tk.indexOf(w) >= 0 || text.toLowerCase().indexOf(w) >= 0; }); });
+    return exact.length ? exact : top;
+  }
+  function addFromText(text) { // returns {added:[], msg: html, chips}
+    var parts = text.split(/\band\b|,|&|\+|\baur\b|\n/i), added = [], notes = [], pend = null;
+    parts.forEach(function (p, pi) {
+      if (pend) return;
+      p = p.trim(); if (!p) return;
+      var qty = 1, m = p.match(/(\d+)\s*(?:x|×)?\s*/) , w;
+      if (m) { qty = +m[1]; p = p.replace(m[0], ' '); } else { w = p.toLowerCase().split(/\W+/).filter(function (z) { return NUMW[z]; })[0]; if (w) { qty = NUMW[w]; p = p.replace(new RegExp('\\b' + w + '\\b', 'i'), ' '); } }
+      if (qty < 1 || qty > 20) { notes.push('Please order between 1 and 20 of each dish.'); return; }
+      p = p.replace(CMD, ' ').replace(/\s+/g, ' ').trim(); if (p.length < 2) return;
+      var f = findItems(p); if (!f.length) { var fx = fixTypos(p); if (fx !== p.toLowerCase()) f = findItems(fx); }
+      if (!f.length) { notes.push('I could not find “' + esc(p) + '” on the menu.'); return; }
+      if (f.length > 1) {
+        var live = f.filter(function (i) { return !i.soldOut; });
+        if (live.length > 1) { pend = { qty: qty, opts: live.slice(0, 5).map(function (i) { return i.key; }), rest: parts.slice(pi + 1).join(' and ') }; return; }
+        f = live.length ? live : f;
+      }
+      var it = f[0];
+      if (it.soldOut) { notes.push('Sorry, <b>' + esc(it.name) + '</b> is sold out today.'); return; }
+      O.cart[it.key] = Math.min(20, (O.cart[it.key] || 0) + qty); added.push(qty + ' × ' + esc(it.name) + (it.preorder ? ' (pre-order, needs 24 hours notice)' : ''));
+    });
+    return { added: added, notes: notes, pend: pend };
+  }
+  function cartChips() { return cartLines().length ? ['Done, checkout', 'Show cart', 'Clear cart'] : ['View menu']; }
+  function startOrder(q) {
+    F = null; lastOffer = ''; O = { step: 'cart', cart: {}, type: null, d: { time: 'asap', notes: '' } };
+    var rest = (q || '').replace(CMD, ' ').replace(/\s+/g, ' ').trim();
+    if (rest.length > 2 && !/^(takeaway|delivery|pickup)$/i.test(rest)) { var res = addFromText(q); if (res.added.length || res.pend) return orderAddReply(res); }
+    return r('Happy to take your order. Tell me the dishes and quantities, for example <b>“2 chicken karahi and 4 garlic naan”</b>. Say <b>done</b> when you have finished. (Type “cancel” any time to stop.)', ['What should I try?', 'View menu']);
+  }
+  function orderAddReply(res) {
+    if (res.pend) {
+      O.pend = res.pend;
+      return r((res.added.length ? 'Added ' + res.added.join(', ') + '.<br>' : '') + 'Which one would you like' + (res.pend.qty > 1 ? ' (' + res.pend.qty + ' of them)' : '') + '?<ul>' + res.pend.opts.map(function (k, i) { return '<li>' + (i + 1) + '. ' + esc(oname(k)) + ' — ' + money(OI[k].price) + '</li>'; }).join('') + '</ul>', res.pend.opts.map(oname));
+    }
+    var msg = (res.added.length ? 'Added ' + res.added.join(', ') + '. ' : '') + res.notes.join(' ');
+    return r((msg ? msg + '<br>' : '') + cartHtml(false) + '<br>Anything else? Or say <b>done</b> to checkout.', cartChips());
+  }
+  function pickupSlots() {
+    var now = new Date(), nm = now.getHours() * 60 + now.getMinutes() + 30, h = hoursFor(ymd(now)), out = [];
+    for (var m = +h.open; m <= +h.close - 30; m += 30) if (m >= nm) out.push(m);
+    return out;
+  }
+  function etaForOrder(o, placed) {
+    var n = o.lines.reduce(function (a, l) { return a + l.qty; }, 0), add = function (m) { return new Date(placed.getTime() + m * 60000); }, clk = function (d) { return fmtT(d.getHours() * 60 + d.getMinutes()); };
+    if (o.lines.some(function (l) { return l.preorder; })) return { kind: 'preorder', title: 'We will confirm your time', text: 'Your order contains a pre-order item (24 hours notice). Our team will call you to confirm the exact time.' };
+    if (o.type === 'delivery') { var lo = Math.min(MAXWAIT - 10, 40 + n); return { kind: 'delivery', title: 'Estimated delivery', value: 'By ' + clk(add(MAXWAIT)), text: 'About ' + lo + '–' + MAXWAIT + ' minutes from now (' + clk(add(lo)) + ' to ' + clk(add(MAXWAIT)) + '). Delivery never takes longer than ' + MAXWAIT + ' minutes.', minMinutes: lo, maxMinutes: MAXWAIT }; }
+    if (o.details.time && o.details.time !== 'asap') return { kind: 'scheduled', title: 'Pickup time', value: fmtT(+o.details.time), text: 'Your order will be ready at your chosen time.', minMinutes: null, maxMinutes: null };
+    var m = Math.min(45, 20 + 2 * n);
+    return { kind: 'pickup', title: 'Ready for pickup at', value: clk(add(m)), text: 'About ' + m + ' minutes from now. Your order will be ready within ' + MAXWAIT + ' minutes at the latest.', minMinutes: m, maxMinutes: MAXWAIT };
+  }
+  function orderReply(q) {
+    var d = O.d, t = q.trim(), x, i;
+    if (/\bcancel\b|\bstop\b|never ?mind|rehne do|chor do|\bquit\b/i.test(t)) { O = null; return r('No problem, I have cancelled the order. Anything else I can help with?', CHIPS_MAIN); }
+    if (O.step === 'cart') {
+      if (O.pend) {
+        var pend = O.pend, low = t.toLowerCase(), pick = null; O.pend = null;
+        var num = /^\d$/.test(t) ? +t - 1 : -1; if (num >= 0 && pend.opts[num]) pick = pend.opts[num];
+        if (!pick) pick = pend.opts.filter(function (k) { return low === oname(k).toLowerCase(); })[0] || null;
+        if (!pick) { var f2 = pend.opts.filter(function (k) { var lab = (oname(k).match(/\(([^)]*)\)$/) || [, ''])[1].toLowerCase(); return lab && new RegExp('\\b' + lab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(low); }); if (f2.length === 1) pick = f2[0]; }
+        if (pick) { O.cart[pick] = Math.min(20, (O.cart[pick] || 0) + pend.qty); var first = { added: [pend.qty + ' × ' + esc(oname(pick))], notes: [] }; if (pend.rest && pend.rest.trim()) { var more = addFromText(pend.rest); first.added = first.added.concat(more.added); first.notes = more.notes; first.pend = more.pend; } return orderAddReply(first); }
+      }
+      if (/^(clear|empty|reset)\b/i.test(t)) { O.cart = {}; return r('I have emptied your cart. What would you like to order?', ['View menu']); }
+      if (/^(show|view|see|what'?s in)?\s*(my |the )?(cart|basket|order)\b/i.test(t) || /^show cart/i.test(t)) return r('Your cart:<br>' + cartHtml(false), cartChips());
+      if (/^(remove|delete|minus|hata|hatao)\b/i.test(t)) {
+        var tx = t.replace(/^(remove|delete|minus|hata|hatao)\s*/i, ''), tk = tokens(tx), ls = cartLines().filter(function (l) { return tk.some(function (w) { return l.name.toLowerCase().indexOf(w) >= 0; }); });
+        if (!ls.length) return r('I could not find that in your cart.<br>' + cartHtml(false), cartChips());
+        ls.forEach(function (l) { delete O.cart[l.key]; }); return r('Removed ' + ls.map(function (l) { return esc(l.name); }).join(', ') + '.<br>' + cartHtml(false), cartChips());
+      }
+      if (/^(done|checkout|check out|finish|finished|that'?s? (all|it)|thats all|nothing else|no more|no|nope|bas|bas itna|proceed|continue|next|confirm|place( the| my)? order|done, checkout)(?![a-z])/i.test(t)) {
+        if (!cartLines().length) return r('Your cart is empty. Tell me what you would like, for example “2 chicken karahi”.', ['What should I try?', 'View menu']);
+        O.step = 'type'; return r('Here is your cart:<br>' + cartHtml(false) + '<br><br>Would you like <b>pickup</b> or <b>delivery</b>? (Delivery fee ' + money(DELIVERY) + ')', ['Pickup', 'Delivery']);
+      }
+      var res = addFromText(t);
+      if (res.added.length || res.pend) return orderAddReply(res);
+      return r((res.notes.length ? res.notes.join(' ') + ' ' : 'I did not understand that. ') + 'Try a dish name with a quantity, for example “2 chicken biryani”, or say <b>done</b> to checkout.', cartChips());
+    }
+    switch (O.step) {
+      case 'type':
+        if (/deliver/i.test(t)) { O.type = 'delivery'; O.step = 'address'; return r('Delivery it is. Please type your full <b>delivery address</b> (house / flat, street, area, city).'); }
+        if (/pick|collect|takeaway|take away|khud|aunga|aaunga/i.test(t)) {
+          O.type = 'pickup'; O.step = 'time'; var sl = pickupSlots(); O.sl = sl;
+          return r('Pickup it is. When should it be ready? Say <b>as soon as possible</b>' + (sl.length ? ' or a time today (e.g. ' + fmtT(sl[Math.min(2, sl.length - 1)]) + ')' : '') + '.', ['As soon as possible'].concat(sl.slice(0, 3).map(fmtT)));
+        }
+        return r('Please choose <b>Pickup</b> or <b>Delivery</b>.', ['Pickup', 'Delivery']);
+      case 'address':
+        if (t.length < 10) return r('Please type the full address (at least 10 characters), including house number, street and area.');
+        d.address = t; O.step = 'name'; return r('Thank you. What is your <b>name</b>?');
+      case 'time':
+        if (/asap|as soon|now|jaldi|abhi|earliest/i.test(t)) { d.time = 'asap'; }
+        else { x = parseTime(t, O.sl || []); if (x == null) return r('I could not match that time. ' + (O.sl && O.sl.length ? 'Pickup times today start at ' + fmtT(O.sl[0]) + ', every 30 minutes. ' : '') + 'Say “as soon as possible” or pick a time.', ['As soon as possible'].concat((O.sl || []).slice(0, 3).map(fmtT))); d.time = x; }
+        O.step = 'name'; return r('What is your <b>name</b>?');
+      case 'name':
+        x = t.replace(/^(my name is|i am|i'm|mera naam|name is)\s+/i, '').trim();
+        if (x.length < 2 || x.length > 60 || /\d{4}/.test(x)) return r('Please type your name, for example “Ali Raza”.');
+        d.name = x; O.step = 'phone'; return r('Thank you, ' + esc(x) + '. What is your <b>mobile number</b>? (e.g. 0300 1234567)');
+      case 'phone':
+        if (!/^(\+?92|0)3\d{9}$/.test(t.replace(/[\s-]/g, ''))) return r('That does not look like a Pakistani mobile number. Please type it like 0300 1234567.');
+        d.phone = t.replace(/[\s-]/g, ''); O.step = 'notes'; return r('Any <b>notes</b> for the kitchen (spice level, allergies, etc.)? Say “none” to skip.', ['None']);
+      case 'notes':
+        d.notes = /^(none|no|nope|skip|nahi|nahin|nil|nothing)\b/i.test(t) ? '' : t.slice(0, 300); O.step = 'confirm';
+        var tt = cartTotals();
+        return r('Please check your order:' + cartHtml(true) + '<br><br>' + (O.type === 'delivery' ? '<b>Delivery</b> to ' + esc(d.address) : '<b>Pickup</b> ' + (d.time === 'asap' ? 'as soon as possible' : 'at ' + fmtT(d.time))) + '<br>' + esc(d.name) + ' · ' + esc(d.phone) + (d.notes ? '<br>Notes: ' + esc(d.notes) : '') + '<br><br>Shall I place this order? (' + esc(M.taxNote || '') + ')', ['Yes, place order', 'Cancel']);
+      case 'confirm':
+        if (/^(yes|confirm|ok|okay|haan|han|ji|yep|sure|done|send|place)/i.test(t)) return submitOrder();
+        if (/^(no|nahi|nahin)/i.test(t)) { O = null; return r('Okay, I have not sent anything. Anything else I can help with?', CHIPS_MAIN); }
+        return r('Please press “Yes, place order” to send it, or “Cancel”.', ['Yes, place order', 'Cancel']);
+    }
+    O = null; return null;
+  }
+  function submitOrder() {
+    if (!window.RiwayatSync || !RiwayatSync.available()) { O = null; return r('Sorry, I cannot send orders from here right now. Please use the order page: ' + ACT.take, ['Contact details']); }
+    var d = O.d, now = new Date(), o = { type: O.type, details: { name: d.name, phone: d.phone, address: O.type === 'delivery' ? d.address : '', time: O.type === 'delivery' ? 'asap' : d.time, notes: d.notes }, lines: cartLines(), totals: cartTotals() };
+    o.id = 'RW-' + ymd(now).replace(/-/g, '').slice(2) + '-' + Math.floor(1000 + Math.random() * 9000); o.placedAt = now.toISOString(); o.eta = etaForOrder(o, now);
+    return RiwayatSync.submit('order', o).then(function (tok) {
+      o.token = tok; o.status = 'new'; O = null;
+      try { var all = JSON.parse(localStorage.getItem('riwayat_orders') || '[]'); all.push(o); localStorage.setItem('riwayat_orders', JSON.stringify(all)); } catch (e) { /* ignore */ }
+      return r('Thank you, ' + esc(d.name.split(/\s+/)[0]) + '! 🎉 Your order <b>' + esc(o.id) + '</b> has been received and the kitchen has been notified.<br>' + esc(o.eta.title) + (o.eta.value ? ': <b>' + esc(o.eta.value) + '</b>' : '') + '.<br>Total: <b>' + money(o.totals.total) + '</b>. Thank you for choosing Riwayat!<br><small>Ask me “check my order status” any time.</small>', ['Check my order status', 'Opening hours']);
+    }, function () { return r('I could not reach the restaurant just now, so nothing was sent. Please press “Yes, place order” to try again.', ['Yes, place order', 'Cancel']); });
+  }
+
   var RULES = [
     { t: /sold ?out|finished today|khatam|not available today|unavailable/i, f: function () { var so = INDEX.filter(function (i) { return i.soldOut; }); return r(so.length ? 'Currently <b>sold out</b>:<ul>' + so.map(function (i) { return '<li>' + esc(i.name) + '</li>'; }).join('') + '</ul>Everything else on the menu is available.' : 'Nothing is marked sold out right now.', ['View menu']); } },
     { t: /status|track|where is my|check my (order|booking|reservation|table)|RW-\d|RV-\d/i, f: function (q) { return statusReply(q); } },
@@ -286,7 +441,9 @@
     { t: /how are you|kya haal|kaise ho|what'?s up|sup\b/i, f: function () { return r('Doing well, thank you, and ready to talk food! Would you like a recommendation, the buffet prices, or to book a table?', ['What should I try?', 'Buffet prices', 'Book a table']); } },
     { t: /joke|funny|mazahiya|لطیفہ/i, f: function () { return r('Why did the biryani get invited to every party? Because it always brings the whole <i>dum</i> crowd together. 😄 Now, shall I suggest something tasty?', ['What should I try?', 'Buffet prices']); } },
     { t: /gst|tax|delivery (fee|charge)|charges|service charge/i, f: function () { return r('Menu prices <b>exclude GST</b>. At the bill we add <b>' + GST + '% GST</b>, plus a <b>' + money(DELIVERY) + '</b> delivery fee for delivery orders.', ['Takeaway & delivery']); } },
-    { t: /deliver|takeaway|take away|pick ?up|order|parcel|home delivery/i, f: function () { return r('You can order for <b>pickup</b> or <b>delivery</b>:<ol><li>Choose <b>Takeaway</b>, then Pickup or Delivery</li><li>Add dishes to your cart</li><li>Review the bill (' + GST + '% GST' + ('; delivery fee ' + money(DELIVERY)) + ')</li><li>Enter your details and press <b>Confirm Order</b></li></ol>Your order goes straight to the restaurant when you press Confirm. No online payment is taken on the website. ' + ACT.take, ['GST & delivery fee', 'View menu']); } },
+    { t: /deliver|takeaway|take away|pick ?up|order|parcel|home delivery|ghar par/i, f: function (q) {
+        if (/^takeaway & delivery$/i.test(q) || /\bhow\b|process|steps|kaise|do you|does|can you|areas?\b|available|hoti|policy/i.test(q)) return r('You can order for <b>pickup</b> or <b>delivery</b> (delivery fee ' + money(DELIVERY) + ', plus ' + GST + '% GST). I can take your order right here in the chat, or you can use the full page: ' + ACT.take + '<br>Your order goes straight to the restaurant when you confirm. No online payment is taken on the website.', ['Place an order', 'GST & delivery fee', 'View menu']);
+        return startOrder(q); } },
     { t: /pay|card|cash|jazzcash|easypaisa|checkout/i, f: function () { return r('No online payment is taken on this website. Please call <b>' + PHONE + '</b> to ask about payment methods.', ['Takeaway & delivery', 'Book a table']); } },
     { t: /pdf|download|printable/i, f: function () { return r('Use the <b>Download Menu (PDF)</b> button on the ' + link(menuHref, 'Menu page') + ' to save or print the full menu.'); } },
     { t: /gallery|photo|picture|image|pics/i, f: function () { return r('Take a look at our ' + link(galleryHref, 'photo gallery') + ' — the main dining hall, courtyard, rooftop, live kitchens and more.'); } },
@@ -305,6 +462,7 @@
 
   function reply(q, noFix) {
     if (F) return flowReply(q);
+    if (O) return orderReply(q);
     for (var i = 0; i < RULES.length; i++) {
       if (RULES[i].t.test(q)) { var out = RULES[i].f(q); if (out) return out; }
     }
@@ -326,7 +484,7 @@
     if (!hit) return null;
     return r('<b>' + esc(hit.t.name) + '</b> (' + (hit.k === 'birthday' ? 'Birthday' : 'Engagement') + ' theme) — <i>' + esc(hit.t.tagline) + '</i><br>' + (hit.t.desc ? esc(hit.t.desc) + '<br>' : '') + 'Includes: ' + hit.t.features.map(esc).join(', ') + '.' + (hit.t.min ? '<br>Minimum guests: <b>' + esc(hit.t.min) + '</b>.' : '<br>Call <b>' + PHONE + '</b> for the minimum guest count.') + '<br>' + link(onOrderPage ? 'index.html#celebrations' : '#celebrations', 'See photos →'), ['Contact details']);
   }
-  var CHIP_MAP = { 'Birthday themes': 'birthday themes', 'Engagement themes': 'engagement themes', 'Download menu': 'download pdf menu', 'View menu': 'menu', 'Other buffets': 'buffets', 'Dinner buffet': 'dinner buffet', 'Hi-Tea buffet': 'hi-tea buffet', 'Sunday brunch': 'sunday brunch buffet', 'Desi dishes': 'desi', 'Contact details': 'contact phone', 'What should I try?': 'recommend something' };
+  var CHIP_MAP = { 'Place an order': 'place an order', 'Birthday themes': 'birthday themes', 'Engagement themes': 'engagement themes', 'Download menu': 'download pdf menu', 'View menu': 'menu', 'Other buffets': 'buffets', 'Dinner buffet': 'dinner buffet', 'Hi-Tea buffet': 'hi-tea buffet', 'Sunday brunch': 'sunday brunch buffet', 'Desi dishes': 'desi', 'Contact details': 'contact phone', 'What should I try?': 'recommend something' };
 
   /* ---------- UI ---------- */
   var root = document.createElement('div'); root.className = 'chat-root';
