@@ -364,7 +364,17 @@
     setTimeout(function () { input.focus(); }, 50);
   }
   function close() { panel.hidden = true; fab.setAttribute('aria-expanded', 'false'); root.classList.remove('open'); fab.focus(); }
-  fab.addEventListener('click', function () { panel.hidden ? open() : close(); });
+  /* thank-you message after an order or booking is confirmed on the order page */
+  window.addEventListener('riwayat:placed', function (e) {
+    var o = e.detail || {}, isRes = o.kind === 'reservation' || /^RV-/.test(o.id || ''), det = o.details || {}, nm = String(isRes ? o.name : det.name).trim().split(/\s+/)[0] || '', html;
+    if (isRes) html = 'Thank you' + (nm ? ', ' + esc(nm) : '') + '! 🎉 Your table request <b>' + esc(o.id) + '</b> for <b>' + esc(fmtD(o.date)) + '</b> at <b>' + fmtT(o.time) + '</b> has reached us. Our team will confirm it shortly. We look forward to welcoming you at Riwayat.';
+    else html = 'Thank you' + (nm ? ', ' + esc(nm) : '') + '! 🎉 Your order <b>' + esc(o.id) + '</b> has been received and the kitchen has been notified.' + (o.eta && o.eta.value ? '<br>' + esc(o.eta.title || 'Estimated time') + ': <b>' + esc(o.eta.value) + '</b>.' : '') + '<br>Thank you for choosing Riwayat!';
+    if (!started) { started = true; }
+    add('bot', html + '<br><small>Ask me “check my ' + (isRes ? 'booking' : 'order') + ' status” any time.</small>', true);
+    setChips([isRes ? 'Check my booking status' : 'Check my order status', 'Opening hours']);
+    if (panel.hidden) { if (window.innerWidth >= 700) open(); else fab.classList.add('has-new'); }
+  });
+  fab.addEventListener('click', function () { fab.classList.remove('has-new'); panel.hidden ? open() : close(); });
   document.getElementById('chatX').addEventListener('click', close);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) close(); });
   form.addEventListener('submit', function (e) { e.preventDefault(); var v = input.value; input.value = ''; send(v); });

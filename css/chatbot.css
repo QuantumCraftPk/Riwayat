@@ -36,3 +36,7 @@
   .order-page .chat-root{bottom:calc(78px + env(safe-area-inset-bottom,0px))}
 }
 @media (prefers-reduced-motion:reduce){.msg.typing span{animation:none}}
+
+.chat-fab.has-new{position:relative;animation:chatpulse 1.6s ease-in-out 3}
+.chat-fab.has-new::after{content:'1';position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#d95926;color:#fff;font:600 .7rem/18px sans-serif;text-align:center}
+@keyframes chatpulse{50%{transform:scale(1.1)}}
