@@ -14,7 +14,7 @@
   var LBL = { 'new': 'New', preparing: 'Preparing', ready: 'Ready', completed: 'Completed', cancelled: 'Cancelled', confirmed: 'Confirmed', declined: 'Declined' };
 
   var S = { tab: 'orders', orders: [], res: [], ofilter: 'all', rfilter: 'all', cat: 0, q: '', loaded: false,
-    docs: { menu: null, cel: null, set: null }, dirty: { menu: false, cel: false, set: false }, bulk: { pct: 5, scope: 'all', round: 10, buffets: true } };
+    docs: { menu: null, cel: null, set: null }, dirty: { menu: false, cel: false, set: false }, dash: '7', bulk: { pct: 5, scope: 'all', round: 10, buffets: true } };
   var timer = null;
 
   /* ---------- small helpers ---------- */
@@ -72,7 +72,7 @@
     $('#view').innerHTML = '<p class="mute">Loading…</p>';
     Promise.all([loadSite(), loadRecords()]).then(function () {
       S.loaded = true; drawTabs(); draw();
-      clearInterval(timer); timer = setInterval(function () { if (S.tab === 'orders' || S.tab === 'res') refresh(true); }, 20000);
+      clearInterval(timer); timer = setInterval(function () { if (S.tab === 'orders' || S.tab === 'res' || S.tab === 'dash') refresh(true); }, 20000);
     }).catch(function (e) {
       if (e && e.status === 401) { FS.signOut(); showLogin('Your session expired. Please sign in again.'); return; }
       $('#view').innerHTML = '<div class="adm-err">' + esc(errMsg(e)) + '</div><p><button class="btn btn-ghost" id="retry">Try again</button></p>';
@@ -80,7 +80,7 @@
     });
   }
   function refresh(quiet) {
-    return loadRecords().then(function () { drawTabs(); if (S.tab === 'orders' || S.tab === 'res') { var y = window.scrollY; draw(); window.scrollTo(0, y); } if (!quiet) toast('Updated'); }, function (e) { if (!quiet) toast(errMsg(e), true); });
+    return loadRecords().then(function () { drawTabs(); if (S.tab === 'orders' || S.tab === 'res' || S.tab === 'dash') { var y = window.scrollY; draw(); window.scrollTo(0, y); } if (!quiet) toast('Updated'); }, function (e) { if (!quiet) toast(errMsg(e), true); });
   }
 
   /* ---------- save ---------- */
@@ -98,7 +98,7 @@
   });
 
   /* ---------- tabs ---------- */
-  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel']];
+  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel']];
   function drawTabs() {
     var n1 = S.orders.filter(function (o) { return o._status === 'new'; }).length, n2 = S.res.filter(function (o) { return o._status === 'new'; }).length;
     $('#tabs').innerHTML = TABS.map(function (t) {
@@ -144,6 +144,65 @@
           '<dt>Cuisine</dt><dd>' + esc(CUISINE[r.cuisine] || r.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(SEAT[r.seating] || r.seating) + '</dd></dl>' +
           '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button></div></div>';
       }).join('') || '<p class="mute">No reservations to show.</p>');
+  };
+
+
+  /* sales dashboard */
+  var DASH = [['1', 'Today'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['all', 'All time']];
+  function dkey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function dlabel(d) { return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
+  function kfmt(n) { n = Math.round(n); if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k'; return String(n); }
+  function hlabel(h) { return ((h + 11) % 12 + 1) + (h >= 12 ? 'p' : 'a'); }
+  function tipAttr(v, l) { return ' tabindex="0" data-tipv="' + esc(v) + '" data-tipl="' + esc(l) + '"'; }
+  V.dash = function () {
+    var now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()), start, capped = false;
+    var all = S.orders.filter(function (o) { return !isNaN(new Date(o._placed)); });
+    if (S.dash === 'all') { var mn = all.reduce(function (m, o) { return Math.min(m, +new Date(o._placed)); }, +now); start = new Date(mn); start.setHours(0, 0, 0, 0); }
+    else start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (+S.dash - 1));
+    var days = Math.round((today - start) / 864e5) + 1;
+    if (days > 90) { start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 89); days = 90; capped = true; }
+    var inR = all.filter(function (o) { return new Date(o._placed) >= start; }), live = inR.filter(function (o) { return o._status !== 'cancelled'; });
+    var cancelled = inR.length - live.length, tot = function (o) { return (o.totals || {}).total || 0; };
+    var sales = live.reduce(function (a, o) { return a + tot(o); }, 0), avg = live.length ? sales / live.length : 0;
+    var rs = S.res.filter(function (r) { var d = new Date(r._placed); return !isNaN(d) && d >= start; }), rLive = rs.filter(function (r) { return r._status !== 'declined'; });
+    var guests = rLive.reduce(function (a, r) { return a + (r.guests || 0); }, 0), vvip = rLive.filter(function (r) { return r.seating === 'vvip'; }).length;
+
+    var buckets = [], map = {};
+    for (var i = 0; i < days; i++) { var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i), b = { d: d, sales: 0, n: 0 }; buckets.push(b); map[dkey(d)] = b; }
+    live.forEach(function (o) { var b = map[dkey(new Date(o._placed))]; if (b) { b.sales += tot(o); b.n++; } });
+    var max = buckets.reduce(function (m, b) { return Math.max(m, b.sales); }, 0) || 1;
+    var cols = buckets.map(function (b) {
+      return '<div class="col"' + tipAttr(money(b.sales), dlabel(b.d) + ' · ' + b.n + (b.n === 1 ? ' order' : ' orders')) + '><i style="height:' + (b.sales ? Math.max(2, b.sales / max * 100) : 0) + '%"></i></div>';
+    }).join('');
+    var mid = buckets[Math.floor((buckets.length - 1) / 2)].d;
+    var daily = '<div class="chartwrap"><div class="yax"><span>' + kfmt(max) + '</span><span>' + kfmt(max / 2) + '</span><span>0</span></div><div class="plot"><div class="gl g1"></div><div class="gl g2"></div><div class="cols">' + cols + '</div></div></div>' +
+      '<div class="xax"><span>' + dlabel(buckets[0].d) + '</span><span>' + (buckets.length > 2 ? dlabel(mid) : '') + '</span><span>' + dlabel(buckets[buckets.length - 1].d) + '</span></div>' +
+      '<details class="tv"><summary>View as table</summary><div class="tw"><table class="pt"><thead><tr><th>Day</th><th>Orders</th><th>Sales (Rs)</th></tr></thead><tbody>' + buckets.filter(function (b) { return b.n; }).reverse().map(function (b) { return '<tr><td>' + dlabel(b.d) + '</td><td>' + b.n + '</td><td>' + Math.round(b.sales).toLocaleString('en-US') + '</td></tr>'; }).join('') + '</tbody></table></div></details>';
+
+    var dishes = {}; live.forEach(function (o) { (o.lines || []).forEach(function (l) { var x = dishes[l.name] || (dishes[l.name] = { n: 0, rs: 0 }); x.n += l.qty; x.rs += l.total || 0; }); });
+    var top = Object.keys(dishes).map(function (k) { return { name: k, n: dishes[k].n, rs: dishes[k].rs }; }).sort(function (a, b) { return b.n - a.n || b.rs - a.rs; }).slice(0, 8), tmax = top.length ? top[0].n : 1;
+    var topHtml = top.length ? top.map(function (t) { return '<div class="hrow"' + tipAttr(t.n + ' sold', t.name + ' · ' + money(t.rs)) + '><span class="hn">' + esc(t.name) + '</span><span class="ht"><i style="width:' + Math.max(3, t.n / tmax * 100) + '%"></i></span><span class="hv">' + t.n + '</span></div>'; }).join('') : '<p class="mute">No dishes sold in this period.</p>';
+
+    var pk = live.filter(function (o) { return o.type === 'pickup'; }), dl = live.filter(function (o) { return o.type === 'delivery'; });
+    var pkS = pk.reduce(function (a, o) { return a + tot(o); }, 0), dlS = dl.reduce(function (a, o) { return a + tot(o); }, 0), both = pkS + dlS;
+    var split = both ? '<div class="split"><i class="s1"' + tipAttr(money(pkS), 'Pickup · ' + pk.length + ' orders') + ' style="flex:' + pkS + '"></i><i class="s2"' + tipAttr(money(dlS), 'Delivery · ' + dl.length + ' orders') + ' style="flex:' + dlS + '"></i></div>' +
+      '<div class="lg"><span><i class="sw s1"></i><b>Pickup</b> ' + pk.length + ' orders · ' + money(pkS) + ' (' + Math.round(pkS / both * 100) + '%)</span><span><i class="sw s2"></i><b>Delivery</b> ' + dl.length + ' orders · ' + money(dlS) + ' (' + Math.round(dlS / both * 100) + '%)</span></div>' : '<p class="mute">No orders in this period.</p>';
+
+    var hrs = {}, hmin = 24, hmax = -1; live.forEach(function (o) { var h = new Date(o._placed).getHours(); hrs[h] = (hrs[h] || 0) + 1; hmin = Math.min(hmin, h); hmax = Math.max(hmax, h); });
+    var hhtml = '<p class="mute">No orders in this period.</p>';
+    if (hmax >= 0) {
+      hmin = Math.min(hmin, 10); hmax = Math.max(hmax, 21); var hm = 1, hc = ''; for (var h = hmin; h <= hmax; h++) hm = Math.max(hm, hrs[h] || 0);
+      for (var h2 = hmin; h2 <= hmax; h2++) hc += '<div class="col"' + tipAttr((hrs[h2] || 0) + ((hrs[h2] || 0) === 1 ? ' order' : ' orders'), U.clock(h2 * 60) + ' – ' + U.clock((h2 + 1) * 60)) + '><i style="height:' + ((hrs[h2] || 0) ? Math.max(4, hrs[h2] / hm * 100) : 0) + '%"></i><em>' + hlabel(h2) + '</em></div>';
+      hhtml = '<div class="plot hours"><div class="cols">' + hc + '</div></div>';
+    }
+    var filt = '<div class="pills" role="group" aria-label="Period">' + DASH.map(function (x) { return '<button class="pill-b" data-act="dash" data-v="' + x[0] + '" aria-pressed="' + (S.dash === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    var tile = function (v, l) { return '<div><b>' + v + '</b>' + l + '</div>'; };
+    return '<h2>Sales dashboard</h2>' + filt +
+      '<div class="stat">' + tile(money(sales), 'Sales') + tile(live.length, 'Orders') + tile(money(avg), 'Average order') + tile(cancelled, 'Cancelled (not counted)') + '</div>' +
+      '<div class="ed"><h3 style="margin-top:0">Sales per day (Rs)</h3>' + daily + '</div>' +
+      '<div class="two"><div class="ed"><h3 style="margin-top:0">Top dishes (quantity sold)</h3>' + topHtml + '</div><div class="ed"><h3 style="margin-top:0">Pickup vs delivery (by sales)</h3>' + split + '<h3>Busiest hours (orders placed)</h3>' + hhtml + '</div></div>' +
+      '<div class="ed"><h3 style="margin-top:0">Reservations in this period</h3><div class="stat" style="margin:0">' + tile(rLive.length, 'Bookings') + tile(guests, 'Guests expected') + tile(vvip, 'VVIP hall') + tile(rs.filter(function (r) { return r._status === 'new'; }).length, 'Awaiting confirmation') + '</div></div>' +
+      '<p class="mute">Sales exclude cancelled orders and are based on the totals customers were shown (GST and delivery fee included). ' + (capped ? 'Showing the last 90 days. ' : '') + (S.orders.length >= 500 ? 'Only the latest 500 orders are loaded. ' : '') + 'Times are in this device’s time zone.</p>';
   };
 
   /* menu editor */
@@ -321,6 +380,7 @@
       return;
     }
     switch (a) {
+      case 'dash': S.dash = el.getAttribute('data-v'); draw(); break;
       case 'refresh': refresh(false); break;
       case 'xlsx': exportXlsx(); break;
       case 'bulk': bulkApply(); break;
@@ -336,6 +396,17 @@
       case 'delth': var k2 = el.getAttribute('data-k'), ti = +el.getAttribute('data-ti'); if (confirm('Delete the theme “' + P[k2].themes[ti].name + '”?')) { P[k2].themes.splice(ti, 1); mark('cel'); draw(); } break;
     }
   });
+
+  /* chart tooltip: shows on hover and on keyboard focus */
+  var tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; tip.innerHTML = '<b></b><span></span>'; document.body.appendChild(tip);
+  function showTip(el, x, y) {
+    tip.firstChild.textContent = el.getAttribute('data-tipv'); tip.lastChild.textContent = el.getAttribute('data-tipl'); tip.hidden = false;
+    var w = tip.offsetWidth, h = tip.offsetHeight, nx = Math.min(Math.max(8, x - w / 2), window.innerWidth - w - 8), ny = y - h - 12; if (ny < 8) ny = y + 18; tip.style.left = nx + 'px'; tip.style.top = ny + 'px';
+  }
+  document.addEventListener('pointermove', function (e) { var el = e.target.closest && e.target.closest('[data-tipv]'); if (el && el.closest('#view')) showTip(el, e.clientX, e.clientY); else tip.hidden = true; });
+  document.addEventListener('focusin', function (e) { var el = e.target.closest && e.target.closest('[data-tipv]'); if (el) { var r = el.getBoundingClientRect(); showTip(el, r.left + r.width / 2, r.top); } });
+  document.addEventListener('focusout', function () { tip.hidden = true; });
+  document.addEventListener('scroll', function () { tip.hidden = true; }, true);
 
   /* ---------- go ---------- */
   var a = FS.loadAuth();
