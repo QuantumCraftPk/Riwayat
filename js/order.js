@@ -57,6 +57,8 @@
   }
   /* ---------- time estimate (never more than 60 minutes) ---------- */
   var MAX_WAIT = +ST.maxDeliveryMinutes || 60;
+  var BK = ST.booking || {}, MAX_PARTY = +BK.maxParty || 20, ADVANCE = +BK.advanceDays || 60;
+  var WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   function clock(d) { return fmtTime(d.getHours() * 60 + d.getMinutes()); }
   function etaFor(o, placed) {
     var n = o.lines.reduce(function (a, l) { return a + l.qty; }, 0);
@@ -77,12 +79,21 @@
   var TYPE_NAME = { dine: 'Dine In', pickup: 'Takeaway · Pickup', delivery: 'Takeaway · Delivery' };
 
   /* ---------- time slots ---------- */
+  function closedReason(dateStr) {
+    if (!dateStr) return '';
+    var wd = parseYmd(dateStr).getDay();
+    if ((BK.closedWeekdays || []).indexOf(wd) >= 0) return 'Sorry, we are not taking bookings on ' + WD[wd] + 's.';
+    var hit = (BK.closedDates || []).filter(function (x) { return x.date === dateStr; })[0];
+    return hit ? 'Sorry, we are not taking bookings on this date' + (hit.note ? ' (' + hit.note + ')' : '') + '. Please pick another day.' : '';
+  }
   function slots(dateStr, mode) {
     // Hours come from the settings (last slot 30 min before closing)
-    var out = [], now = new Date(), isToday = dateStr === ymd(now), nowMin = now.getHours() * 60 + now.getMinutes() + 30;
+    var out = [], now = new Date(), isToday = dateStr === ymd(now), nowMin = now.getHours() * 60 + now.getMinutes() + (mode === 'dine' ? Math.max(30, +BK.minNoticeMinutes || 0) : 30);
     var wd = dateStr ? parseYmd(dateStr).getDay() : now.getDay(), weekend = wd === 0 || wd === 6;
     var h = weekend ? ST.hours.wknd : ST.hours.week, first = +h.open, last = +h.close - 30;
-    for (var m = first; m <= last; m += 30) if (!isToday || m >= nowMin) out.push(m);
+    var blocked = mode === 'dine' ? (BK.blockedSlots || []).filter(function (b) { return b.date === dateStr; }) : [];
+    if (mode === 'dine' && closedReason(dateStr)) return [];
+    for (var m = first; m <= last; m += 30) if ((!isToday || m >= nowMin) && !blocked.some(function (b) { return m >= +b.from && m < +b.to; })) out.push(m);
     return out;
   }
   function slotOptions(list, sel) {
@@ -175,14 +186,14 @@
       return '<div class="kidage"><label for="kidAge' + i + '">Child ' + (i + 1) + ' — age</label><select id="kidAge' + i + '" data-kid="' + i + '">' + o + '</select></div>';
     }).join('');
   }
-  function guestTotalText() { var n = guestCount(S.dine); return 'Total: ' + n + (n === 1 ? ' guest' : ' guests'); }
+  function guestTotalText() { var n = guestCount(S.dine); return 'Total: ' + n + (n === 1 ? ' guest' : ' guests') + (n >= MAX_PARTY ? ' (maximum for an online booking; for larger groups please call ' + ST.phone + ')' : ''); }
   function refreshGuests() {
     $('#adultsN').textContent = S.dine.adults; $('#kidsN').textContent = S.dine.kids.length;
     $('#kidAges').innerHTML = kidAgesHtml(); $('#guestTotal').textContent = guestTotalText(); flag('dGuests', ''); save();
   }
 
   views.dine = function () {
-    var d = S.dine, today = ymd(new Date()), max = new Date(); max.setDate(max.getDate() + 60);
+    var d = S.dine, today = ymd(new Date()), max = new Date(); max.setDate(max.getDate() + ADVANCE);
     var sl = d.date ? slotOptions(slots(d.date, 'dine'), d.time) : '';
     var chips = CUISINES.map(function (c) {
       return '<label class="chip"><input type="radio" name="cuisine" value="' + c[0] + '"' + (d.cuisine === c[0] ? ' checked' : '') + '><span>' + c[1] + '</span></label>';
@@ -319,9 +330,11 @@
   }
   function validateDine() {
     var d = S.dine, e = { dDate: '', dTime: '', dGuests: '', dCuisine: '', dSeat: '', dName: '', dPhone: '' }, first = null;
-    if (!d.date) e.dDate = 'Please choose a date.'; else if (d.date < ymd(new Date())) e.dDate = 'That date has passed.';
+    var lastDay = new Date(); lastDay.setDate(lastDay.getDate() + ADVANCE);
+    if (!d.date) e.dDate = 'Please choose a date.'; else if (d.date < ymd(new Date())) e.dDate = 'That date has passed.'; else if (d.date > ymd(lastDay)) e.dDate = 'Bookings open up to ' + ADVANCE + ' days ahead.'; else if (closedReason(d.date)) e.dDate = closedReason(d.date);
     if (!d.time) e.dTime = 'Please choose a time.';
     if (d.adults < 1) e.dGuests = 'At least one adult is needed.';
+    else if (guestCount(d) > MAX_PARTY) e.dGuests = 'Online bookings are limited to ' + MAX_PARTY + ' guests. Please call us for larger groups.';
     else if (d.kids.some(function (a) { return a === '' || a == null; })) e.dGuests = 'Please select the age of each child.';
     if (!d.cuisine) e.dCuisine = 'Please choose a type of cuisine.';
     if (!d.seating) e.dSeat = 'Please choose where you would like to sit.';
@@ -426,9 +439,9 @@
       case 'inc': setQty(key, (S.cart[key] | 0) + 1); break;
       case 'dec': setQty(key, (S.cart[key] | 0) - 1); break;
       case 'remove': setQty(key, 0); break;
-      case 'ainc': S.dine.adults = Math.min(20, S.dine.adults + 1); refreshGuests(); break;
+      case 'ainc': if (guestCount(S.dine) < MAX_PARTY) S.dine.adults += 1; refreshGuests(); break;
       case 'adec': S.dine.adults = Math.max(1, S.dine.adults - 1); refreshGuests(); break;
-      case 'kinc': if (S.dine.kids.length < 10) S.dine.kids.push(''); refreshGuests(); break;
+      case 'kinc': if (S.dine.kids.length < 10 && guestCount(S.dine) < MAX_PARTY) S.dine.kids.push(''); refreshGuests(); break;
       case 'kdec': S.dine.kids.pop(); refreshGuests(); break;
       case 'cartopen': openCart(); break;
       case 'cartclose': closeCart(); break;
@@ -451,8 +464,8 @@
     var id = e.target.id, v = e.target.value;
     if (id === 'dDate') {
       S.dine.date = v; var list = slots(v, 'dine'); if (S.dine.time && list.indexOf(+S.dine.time) < 0) S.dine.time = '';
-      $('#dTime').innerHTML = '<option value="">Select a time</option>' + slotOptions(list, S.dine.time); flag('dDate', ''); save();
-      if (v && !list.length) flag('dTime', 'No more time slots on this date. Please pick another day.');
+      $('#dTime').innerHTML = '<option value="">Select a time</option>' + slotOptions(list, S.dine.time); flag('dDate', closedReason(v)); save();
+      if (v && !list.length && !closedReason(v)) flag('dTime', 'No more time slots on this date. Please pick another day.');
     } else if (id === 'dTime') { S.dine.time = v; flag('dTime', ''); save(); }
     else if (id === 'xTime') { S.details.time = v; save(); }
     else if (e.target.getAttribute && e.target.getAttribute('data-kid') !== null) { S.dine.kids[+e.target.getAttribute('data-kid')] = v; flag('dGuests', ''); save(); }

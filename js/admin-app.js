@@ -137,6 +137,16 @@
           '<div class="row" style="margin:8px 0 0"><button class="btn btn-gold btn-sm fit" data-act="print" data-kind="order" data-doc="' + esc(o._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button>' : '') + '</div></div>';
       }).join('') || '<p class="mute">No orders to show.</p>');
   };
+  var WDN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function bk() { var b = (S.docs.set || {}).booking || {}; return b; }
+  function gcount(r) { return +r.guests || ((+r.adults || 0) + (r.kids || []).length); }
+  function slotLoad(r) { return S.res.filter(function (x) { return x.date === r.date && String(x.time) === String(r.time) && x._status !== 'declined'; }).reduce(function (a, x) { return a + gcount(x); }, 0); }
+  function capHtml(r) {
+    var cap = +bk().maxPerSlot || 0; if (!cap || r._status === 'declined') return '';
+    var n = slotLoad(r), over = n > cap, b = bk(), why = '';
+    if ((b.closedWeekdays || []).indexOf(new Date(r.date + 'T00:00:00').getDay()) >= 0 || (b.closedDates || []).some(function (x) { return x.date === r.date; })) why = ' This date is marked closed.';
+    return '<dt>Slot load</dt><dd class="' + (over || why ? 'capwarn' : '') + '">' + (over ? '⚠ Overbooked: ' : '') + n + ' of ' + cap + ' guests booked for this time slot' + (over ? ' (' + (n - cap) + ' over)' : '') + '.' + why + '</dd>';
+  }
   V.res = function () {
     var c = counts(S.res), rows = S.res.filter(function (o) { return S.rfilter === 'all' || o._status === S.rfilter; });
     return '<h2>Dine In reservations</h2><div class="stat"><div><b>' + c.all + '</b>Total</div><div><b>' + (c['new'] || 0) + '</b>Awaiting confirmation</div></div>' + filterBar(S.rfilter, RST, 'rfilter', c) +
@@ -145,7 +155,7 @@
         return '<div class="rec"><div class="rec-h"><span><b>' + esc(r.id) + '</b> <span class="pill ' + r._status + '">' + LBL[r._status] + '</span></span><span>' + statusSel('reservation', r, RST) + '</span></div><dl>' +
           '<dt>Placed</dt><dd>' + esc(stamp(r._placed)) + '</dd><dt>Guest</dt><dd>' + esc(r.name || '(not given)') + (r.phone ? ' · <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a>' : '') + '</dd>' +
           '<dt>When</dt><dd>' + esc(r.date) + ' at ' + esc(fmtTime(r.time)) + '</dd><dt>Guests</dt><dd>' + (r.guests || (r.adults + (r.kids || []).length)) + ' (' + r.adults + ' adults' + ((r.kids || []).length ? ', ' + r.kids.length + ' kids, ages ' + esc(ages.join(', ')) : '') + ')</dd>' +
-          '<dt>Cuisine</dt><dd>' + esc(CUISINE[r.cuisine] || r.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(SEAT[r.seating] || r.seating) + '</dd></dl>' +
+          '<dt>Cuisine</dt><dd>' + esc(CUISINE[r.cuisine] || r.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(SEAT[r.seating] || r.seating) + '</dd>' + capHtml(r) + '</dl>' +
           '<div class="row" style="margin:8px 0 0"><button class="btn btn-gold btn-sm fit" data-act="print" data-kind="reservation" data-doc="' + esc(r._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button>' : '') + '</div></div>';
       }).join('') || '<p class="mute">No reservations to show.</p>');
   };
@@ -322,8 +332,21 @@
     var hr = function (w, label) { return '<div class="row"><div><label>' + label + ' — opens</label><select data-m="hrs" data-w="' + w + '" data-f="open">' + timeOpts(T.hours[w].open) + '</select></div><div><label>closes</label><select data-m="hrs" data-w="' + w + '" data-f="close">' + timeOpts(T.hours[w].close) + '</select></div></div>'; };
     return '<h2>Restaurant settings</h2><div class="ed"><h3 style="margin-top:0">Contact</h3><div class="row">' + f('phone', 'Phone') + f('email', 'Email', 'email') + '</div><div class="row">' + f('address', 'Address') + '</div></div>' +
       '<div class="ed"><h3 style="margin-top:0">Opening hours</h3>' + hr('week', T.hours.week.label) + hr('wknd', T.hours.wknd.label) + '<p class="mute" style="margin:0">Booking and pickup time slots follow these hours (the last slot is 30 minutes before closing).</p></div>' +
-      '<div class="ed"><h3 style="margin-top:0">Charges and limits</h3><div class="row">' + f('gstPercent', 'GST (%)', 'number', 'min="0" max="40" step="0.5"') + f('deliveryFee', 'Delivery fee (Rs)', 'number', 'min="0"') + f('vvipCharge', 'VVIP hall extra charge (Rs)', 'number', 'min="0"') + f('maxDeliveryMinutes', 'Maximum delivery time (minutes)', 'number', 'min="15" max="180"') + '</div></div>';
+      '<div class="ed"><h3 style="margin-top:0">Charges and limits</h3><div class="row">' + f('gstPercent', 'GST (%)', 'number', 'min="0" max="40" step="0.5"') + f('deliveryFee', 'Delivery fee (Rs)', 'number', 'min="0"') + f('vvipCharge', 'VVIP hall extra charge (Rs)', 'number', 'min="0"') + f('maxDeliveryMinutes', 'Maximum delivery time (minutes)', 'number', 'min="15" max="180"') + '</div></div>' + bookingHtml(T);
   };
+  function bookingHtml(T) {
+    var B = T.booking = T.booking || {}, n = function (k, label, extra) { return '<div><label>' + label + '</label><input data-m="bk" data-f="' + k + '" type="number" ' + extra + ' value="' + esc(B[k]) + '"></div>'; };
+    var cw = (B.closedWeekdays || []), days = WDN.map(function (d, i) { return '<label class="chk"><input type="checkbox" data-m="bkwd" data-d="' + i + '"' + (cw.indexOf(i) >= 0 ? ' checked' : '') + '> ' + d + '</label>'; }).join(' ');
+    var cd = (B.closedDates || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }), bs = (B.blockedSlots || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    return '<div class="ed"><h3 style="margin-top:0">Table bookings</h3><div class="row">' + n('maxPerSlot', 'Guests per time slot (capacity)', 'min="1"') + n('maxParty', 'Largest online party (guests)', 'min="1" max="200"') + n('advanceDays', 'Bookable days ahead', 'min="1" max="365"') + n('minNoticeMinutes', 'Minimum notice (minutes)', 'min="0" max="1440" step="15"') + '</div>' +
+      '<p class="mute" style="margin:0 0 8px">Capacity is a guide for you: the Reservations tab warns when a time slot is over capacity. Guests are never turned away automatically.</p>' +
+      '<label>Closed every week on</label><div class="row" style="margin:0 0 10px">' + days + '</div>' +
+      '<label>Closed dates (holidays, private events)</label>' + (cd.map(function (x) { return '<div class="capl"><span>' + esc(x.date) + (x.note ? ' — ' + esc(x.note) : '') + '</span><button class="btn btn-ghost btn-sm fit" data-act="rmclosed" data-date="' + esc(x.date) + '">Remove</button></div>'; }).join('') || '<p class="mute" style="margin:2px 0 6px">None.</p>') +
+      '<div class="row"><div><input type="date" id="cdDate" aria-label="Closed date"></div><div><input type="text" id="cdNote" placeholder="Note (optional)" aria-label="Note"></div><div><button class="btn btn-gold btn-sm fit" data-act="addclosed">Add closed date</button></div></div>' +
+      '<label style="margin-top:12px">Blocked time slots (one date, part of the day)</label>' + (bs.map(function (x) { return '<div class="capl"><span>' + esc(x.date) + ', ' + fmtTime(x.from) + ' to ' + fmtTime(x.to) + '</span><button class="btn btn-ghost btn-sm fit" data-act="rmblock" data-date="' + esc(x.date) + '" data-from="' + x.from + '" data-to="' + x.to + '">Remove</button></div>'; }).join('') || '<p class="mute" style="margin:2px 0 6px">None.</p>') +
+      '<div class="row"><div><input type="date" id="bsDate" aria-label="Blocked date"></div><div><select id="bsFrom" aria-label="From">' + timeOpts(1080) + '</select></div><div><select id="bsTo" aria-label="Until">' + timeOpts(1380) + '</select></div><div><button class="btn btn-gold btn-sm fit" data-act="addblock">Block these times</button></div></div>' +
+      '<p class="mute" style="margin:0">Customers cannot pick a blocked slot (the “until” time itself stays open).</p></div>';
+  }
 
   /* excel */
   V.export = function () {
@@ -384,13 +407,20 @@
       mark('cel');
     } else if (m === 'set') {
       var T = S.docs.set, num = ['gstPercent', 'deliveryFee', 'vvipCharge', 'maxDeliveryMinutes'].indexOf(f) >= 0; T[f] = num ? numv(v) : v; mark('set');
-    } else if (m === 'hrs') { S.docs.set.hours[el.getAttribute('data-w')][f] = +v; mark('set'); }
+    } else if (m === 'bk') { var Bk = (S.docs.set.booking = S.docs.set.booking || {}); Bk[f] = Math.max(0, parseInt(v, 10) || 0); mark('set'); }
+    else if (m === 'bkwd') { var Bw = (S.docs.set.booking = S.docs.set.booking || {}), d0 = +el.getAttribute('data-d'), arr0 = (Bw.closedWeekdays || []).filter(function (x) { return x !== d0; }); if (v) arr0.push(d0); Bw.closedWeekdays = arr0.sort(); mark('set'); }
+    else if (m === 'hrs') { S.docs.set.hours[el.getAttribute('data-w')][f] = +v; mark('set'); }
   }
   document.addEventListener('input', function (e) { if (e.target.closest('#view') && e.target.tagName !== 'SELECT' && e.target.type !== 'checkbox') onEdit(e); });
   document.addEventListener('change', function (e) { if (e.target.closest('#view') && (e.target.tagName === 'SELECT' || e.target.type === 'checkbox')) onEdit(e); });
 
   function statusChange(el) {
     var kind = el.getAttribute('data-status'), id = el.getAttribute('data-doc'), val = el.value, list = kind === 'order' ? S.orders : S.res;
+    if (kind === 'reservation' && val === 'confirmed') {
+      var rr = S.res.filter(function (x) { return x._doc === id; })[0], cap = +bk().maxPerSlot || 0;
+      if (rr && cap && rr._status === 'declined') { var after = slotLoad(rr) + gcount(rr); if (after > cap && !confirm('Confirming this booking puts ' + after + ' guests in this time slot (capacity ' + cap + '). Confirm anyway?')) { draw(); return; } }
+      else if (rr && cap && slotLoad(rr) > cap && !confirm('This time slot already has ' + slotLoad(rr) + ' guests booked (capacity ' + cap + '). Confirm anyway?')) { draw(); return; }
+    }
     el.disabled = true;
     FS.update((kind === 'order' ? 'orders/' : 'reservations/') + id, { status: val }).then(function () {
       list.forEach(function (o) { if (o._doc === id) o._status = val; }); toast('Status updated to ' + LBL[val]); drawTabs(); var y = window.scrollY; draw(); window.scrollTo(0, y);
@@ -426,6 +456,13 @@
         if (cur.indexOf(em) >= 0) { toast('Already in the list.', true); break; }
         saveStaff(cur.concat([em]), 'Added. They can sign in once their login exists in Firebase.'); break;
       case 'rmstaff': var ri = +el.getAttribute('data-i'); if (confirm('Remove access for ' + S.staff[ri] + '?')) saveStaff(S.staff.filter(function (x, j) { return j !== ri; }), 'Access removed.'); break;
+      case 'addclosed': var cdv = $('#cdDate').value; if (!cdv) { toast('Pick a date first.', true); break; }
+        var Bc = (S.docs.set.booking = S.docs.set.booking || {}); Bc.closedDates = (Bc.closedDates || []).filter(function (x) { return x.date !== cdv; }).concat([{ date: cdv, note: ($('#cdNote').value || '').trim() }]); mark('set'); draw(); break;
+      case 'rmclosed': var Br = S.docs.set.booking; Br.closedDates = (Br.closedDates || []).filter(function (x) { return x.date !== el.getAttribute('data-date'); }); mark('set'); draw(); break;
+      case 'addblock': var bd = $('#bsDate').value, bf = +$('#bsFrom').value, bt = +$('#bsTo').value;
+        if (!bd) { toast('Pick a date first.', true); break; } if (bt <= bf) { toast('The end time must be after the start time.', true); break; }
+        var Bb = (S.docs.set.booking = S.docs.set.booking || {}); Bb.blockedSlots = (Bb.blockedSlots || []).concat([{ date: bd, from: bf, to: bt }]); mark('set'); draw(); break;
+      case 'rmblock': var Bx = S.docs.set.booking, rd = el.getAttribute('data-date'), rf = +el.getAttribute('data-from'), rt = +el.getAttribute('data-to'); Bx.blockedSlots = (Bx.blockedSlots || []).filter(function (x) { return !(x.date === rd && +x.from === rf && +x.to === rt); }); mark('set'); draw(); break;
       case 'print': printSlip(el.getAttribute('data-kind'), el.getAttribute('data-doc')); break;
       case 'refresh': refresh(false); break;
       case 'xlsx': exportXlsx(); break;

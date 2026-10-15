@@ -111,3 +111,7 @@
   #slip .sl-addr{margin-top:4px}#slip .sl-addr span{display:block}#slip .sl-addr b{display:block;font-size:15px}
   #slip .sl-f{text-align:center;font-size:12px}
 }
+
+.capwarn{color:#d95926;font-weight:600}
+.capl{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.chk{display:inline-flex;align-items:center;gap:4px;margin-right:10px;cursor:pointer}

@@ -7,7 +7,8 @@
       week: { label: 'Monday – Friday', open: 720, close: 1380 },
       wknd: { label: 'Saturday & Sunday', open: 480, close: 1440 }
     },
-    gstPercent: 16, deliveryFee: 200, vvipCharge: 2500, maxDeliveryMinutes: 60
+    gstPercent: 16, deliveryFee: 200, vvipCharge: 2500, maxDeliveryMinutes: 60,
+    booking: { maxPerSlot: 60, maxParty: 20, advanceDays: 60, minNoticeMinutes: 30, closedWeekdays: [], closedDates: [], blockedSlots: [] }
   };
   function merge(a, b) { // b over a, objects merged deeply
     var o = {}; Object.keys(a).forEach(function (k) { o[k] = a[k]; });
