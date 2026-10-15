@@ -1,21 +1,39 @@
 # Riwayat (روایت) Restaurant — Conceptual Ordering Website
 
-A conceptual demo: restaurant site with a simulated online-ordering flow. No real payments or backend.
+A conceptual demo restaurant site (MM Alam Road, Lahore) with live takeaway ordering, table reservations, a chatbot and an admin panel. No real payments.
 
-## Planned flow
-Takeaway: Order Type → Menu → Cart → Bill Review → Customer Details → Confirm Order
-Dine In: Order Type → Reservation (date & time, persons, cuisine, seating) → Reservation Confirmed
+## Live
+- GitHub Pages: https://quantumcraftpk.github.io/Riwayat/
+- Vercel: https://riwayat-seven.vercel.app/
+- Admin: `/admin.html` on either address (not linked from the public site). Both addresses use the same Firebase data.
+- Every `git push` to `main` updates both hosts. There is no build step.
 
-## Features
-- Responsive (mobile + desktop)
-- Gallery, downloadable PDF menu, chatbot assistant
+## Customer features
+- Takeaway: Order Type → Menu → Cart → Bill → Details → Confirm. Pickup or Delivery. Live status tracking.
+- Dine In: date and time, guests, kids' ages, cuisine, seating, with booking rules enforced (closed days, blocked times, party size, notice, capacity per time slot).
+- Chatbot (English and Roman Urdu): answers questions, looks up order status, books tables and takes takeaway orders inside the chat.
+- Menu page, gallery, celebrations, downloadable PDF menu, welcome popup.
+
+## Admin panel
+Sign in with the administrator account (Firebase Authentication). Tabs:
+- Orders and Reservations: status changes, print slip, delete (admin only), new-order alerts (chime, banner, flashing tab title) while the page is open
+- Dashboard, Menu, Prices & Sold out, Celebrations, Settings (contact, hours, GST, delivery, booking rules)
+- Excel: spreadsheet of orders, items and reservations (for reporting)
+- Backup: download one JSON file with everything; restore with preview, tick boxes and an automatic safety copy
+- Staff: staff accounts can see orders and reservations and change their status only
+
+## Backend
+- Firebase project `riwayat-41034` (Firestore + Authentication) over plain REST (`js/fs.js`). No SDK, no server.
+- Content: `site/menu`, `site/celebrations`, `site/settings`. Records: `orders`, `reservations`. Staff list: `config/staff`.
+- Public pages read the live content through `js/boot.js` and fall back to the built-in data in `data/` if Firebase cannot be reached.
+- Security rules: `docs/firestore.rules` (paste into Firebase Console → Firestore → Rules → Publish). Admin sign-in on a new web address needs that address added under Authentication → Settings → Authorized domains.
+- The Firebase web API key in `js/firebase-config.js` is a public identifier, not a secret. Access is controlled by the rules.
+- Capacity limits are advisory in the admin panel, because public pages cannot read reservations.
 
 ## Structure
-- `assets/img` logo + hero · `assets/gallery` photos
-- `css/` styles · `js/` scripts · `data/` menu data
-
-## Status
-Complete (concept / demo). Takeaway order flow and Dine In reservation are simulated: no payments, no backend. Orders and reservations are stored in the browser only.
+- `assets/` images, gallery, team photos, PDF menu · `css/` styles · `data/` built-in menu and celebrations · `docs/` rules
+- `js/` scripts: `fs.js` Firestore client, `sync.js` order sync, `order.js` order/booking page, `chatbot.js`, `admin-app.js`, `admin-alerts.js`
+- `js/config.js` and `docs/google-sheet-setup.md` belong to an old Google Sheet option and are not used.
 
 ## Business details used
 - Hours: Mon–Fri 12:00 pm–11:00 pm; Sat & Sun 8:00 am–12:00 am
@@ -25,15 +43,6 @@ Complete (concept / demo). Takeaway order flow and Dine In reservation are simul
 ## Run locally
 Open `index.html` in a browser, or run `python -m http.server` in this folder and visit http://localhost:8000.
 
-## Menu PDF
-`assets/Riwayat-Menu.pdf` is generated from the menu data (18 pages, A4).
-
-
-## Admin panel (Firebase)
-
-- Open `admin.html` (not linked from the public site). Sign in with the administrator account created in Firebase Authentication.
-- Tabs: Orders, Reservations (status tracking), Menu (dishes, descriptions, categories), Prices & Sold out (bulk % change), Celebrations (themes, minimum guests, photo path), Settings (contact, hours, GST, delivery fee, VVIP charge, max delivery time), Excel export.
-- Content is stored in Firestore (`site/menu`, `site/celebrations`, `site/settings`, `orders`, `reservations`). The public pages read it through `js/boot.js` and fall back to the built-in data in `data/` if the database cannot be reached.
-- Security rules are in `docs/firestore.rules` and must be pasted into Firebase Console > Firestore > Rules > Publish.
-- `assets/Riwayat-Menu.pdf` is a static file and does not update when the menu is edited.
-- `js/config.js` and `docs/google-sheet-setup.md` belong to the old Google Sheet option and are no longer used.
+## Notes
+- `assets/Riwayat-Menu.pdf` is a static file made from the menu data (18 pages). It does not update when the menu is edited in admin.
+- Before a demo: delete test orders and reservations in admin, then download a fresh Backup.
