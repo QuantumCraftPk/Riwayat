@@ -8,6 +8,19 @@ service cloud.firestore {
         && request.auth.token.email == 'ilmfajrpakistan@gmail.com';
     }
 
+    // Staff accounts: emails listed (by the admin) in the document config/staff, field "emails".
+    function isStaff() {
+      return request.auth != null
+        && request.auth.token.email in get(/databases/$(database)/documents/config/staff).data.emails;
+    }
+
+    // Staff may only change the status field, and only to a known value.
+    function staffStatusOnly(allowed) {
+      return isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in allowed;
+    }
+
     // A new order or reservation sent by a customer: fixed fields, status must start as "new".
     function validNew(kind) {
       let d = request.resource.data;
@@ -33,14 +46,23 @@ service cloud.firestore {
     // Orders: a customer can place one and read ONLY their own (the long random document id is the key).
     match /orders/{id} {
       allow get: if true;
-      allow list, update, delete: if isAdmin();
+      allow list: if isAdmin() || isStaff();
+      allow update: if isAdmin() || staffStatusOnly(['new', 'preparing', 'ready', 'completed', 'cancelled']);
+      allow delete: if isAdmin();
       allow create: if validNew('order');
     }
 
     match /reservations/{id} {
       allow get: if true;
-      allow list, update, delete: if isAdmin();
+      allow list: if isAdmin() || isStaff();
+      allow update: if isAdmin() || staffStatusOnly(['new', 'confirmed', 'declined']);
+      allow delete: if isAdmin();
       allow create: if validNew('reservation');
+    }
+
+    // Staff list: only the admin can read or change it.
+    match /config/{doc} {
+      allow read, write: if isAdmin();
     }
 
     match /{other=**} {

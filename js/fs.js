@@ -79,6 +79,9 @@
     var p = http('GET', DOCS + '/' + path, null, opts);
     return p.then(fromDoc, function (e) { if (e.status === 404) return null; throw e; });
   }
+  function getAuth(path) { // admin-only documents
+    return authed('GET', DOCS + '/' + path).then(fromDoc, function (e) { if (e.status === 404) return null; throw e; });
+  }
   function create(collection, id, obj) { // public create (used by customers)
     return http('POST', DOCS + '/' + collection + '?documentId=' + encodeURIComponent(id), { fields: toFields(obj) }, { timeout: 15000 });
   }
@@ -95,6 +98,6 @@
     });
   }
 
-  window.RiwayatFS = { get: get, create: create, update: update, remove: remove, list: list, signIn: signIn, signOut: signOut, loadAuth: loadAuth, enc: enc, dec: dec,
+  window.RiwayatFS = { get: get, getAuth: getAuth, create: create, update: update, remove: remove, list: list, signIn: signIn, signOut: signOut, loadAuth: loadAuth, enc: enc, dec: dec,
     session: function () { return auth; }, adminEmail: C.adminEmail };
 })();

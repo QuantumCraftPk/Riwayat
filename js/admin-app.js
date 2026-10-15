@@ -15,7 +15,8 @@
 
   var S = { tab: 'orders', orders: [], res: [], ofilter: 'all', rfilter: 'all', cat: 0, q: '', loaded: false,
     docs: { menu: null, cel: null, set: null }, dirty: { menu: false, cel: false, set: false }, dash: '7', bulk: { pct: 5, scope: 'all', round: 10, buffets: true } };
-  var timer = null;
+  var timer = null, ROLE = 'admin';
+  function isAdminRole() { return ROLE === 'admin'; }
 
   /* ---------- small helpers ---------- */
   function toast(msg, bad) { var t = document.createElement('div'); t.className = 'toast' + (bad ? ' bad' : ''); t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3200); }
@@ -44,9 +45,8 @@
   $('#loginForm').addEventListener('submit', function (ev) {
     ev.preventDefault(); var b = $('#lBtn'); b.disabled = true; b.textContent = 'Signing in…';
     FS.signIn($('#lEmail').value.trim(), $('#lPass').value).then(function (a) {
-      if (a.email.toLowerCase() !== String(FS.adminEmail).toLowerCase()) { FS.signOut(); throw new Error('NOT_ADMIN'); }
       $('#lPass').value = ''; start();
-    }).catch(function (e) { showLogin(e.message === 'NOT_ADMIN' ? 'This account is not the administrator.' : friendly(e)); }).then(function () { b.disabled = false; b.textContent = 'Sign in'; });
+    }).catch(function (e) { showLogin(friendly(e)); }).then(function () { b.disabled = false; b.textContent = 'Sign in'; });
   });
   $('#btnOut').addEventListener('click', function () { if (isDirty() && !confirm('You have unsaved changes. Sign out anyway?')) return; FS.signOut(); S.loaded = false; showLogin(); });
   window.addEventListener('beforeunload', function (e) { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
@@ -59,6 +59,8 @@
       S.docs.cel = c && c.birthday ? c : clone(window.RIWAYAT_PARTIES);
       S.docs.set = U.merge(DEF, s || {});
       S.first = { menu: !(m && m.categories), cel: !(c && c.birthday), set: !s };
+      if (!isAdminRole()) return;
+      return FS.getAuth('config/staff').then(function (d) { S.staff = d && Array.isArray(d.emails) ? d.emails.slice() : []; });
     });
   }
   function loadRecords() {
@@ -68,12 +70,13 @@
     });
   }
   function start() {
-    var a = FS.session(); $('#login').hidden = true; $('#app').hidden = false; $('#btnOut').hidden = false; $('#who').textContent = a.email;
+    var a = FS.session(); ROLE = a.email.toLowerCase() === String(FS.adminEmail).toLowerCase() ? 'admin' : 'staff'; S.tab = isAdminRole() ? S.tab : (S.tab === 'res' ? 'res' : 'orders'); $('#login').hidden = true; $('#app').hidden = false; $('#btnOut').hidden = false; $('#who').textContent = a.email + (isAdminRole() ? '' : ' (staff)');
     $('#view').innerHTML = '<p class="mute">Loading…</p>';
     Promise.all([loadSite(), loadRecords()]).then(function () {
       S.loaded = true; drawTabs(); draw();
       clearInterval(timer); timer = setInterval(function () { if (S.tab === 'orders' || S.tab === 'res' || S.tab === 'dash') refresh(true); }, 20000);
     }).catch(function (e) {
+      if (!isAdminRole() && e && e.status === 403) { FS.signOut(); showLogin('This account has not been given access. Ask the administrator to add your email under Staff.'); return; }
       if (e && e.status === 401) { FS.signOut(); showLogin('Your session expired. Please sign in again.'); return; }
       $('#view').innerHTML = '<div class="adm-err">' + esc(errMsg(e)) + '</div><p><button class="btn btn-ghost" id="retry">Try again</button></p>';
       $('#retry').onclick = start;
@@ -98,10 +101,11 @@
   });
 
   /* ---------- tabs ---------- */
-  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel']];
+  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel'], ['staff', 'Staff']];
+  function visibleTabs() { return isAdminRole() ? TABS : TABS.filter(function (t) { return t[0] === 'orders' || t[0] === 'res'; }); }
   function drawTabs() {
     var n1 = S.orders.filter(function (o) { return o._status === 'new'; }).length, n2 = S.res.filter(function (o) { return o._status === 'new'; }).length;
-    $('#tabs').innerHTML = TABS.map(function (t) {
+    $('#tabs').innerHTML = visibleTabs().map(function (t) {
       var n = t[0] === 'orders' ? n1 : t[0] === 'res' ? n2 : 0;
       return '<button role="tab" data-tab="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + (n ? '<span class="badge">' + n + '</span>' : '') + '</button>';
     }).join('');
@@ -130,7 +134,7 @@
           (o.type === 'delivery' ? '<dt>Address</dt><dd>' + esc(d.address) + '</dd>' : '<dt>Pickup</dt><dd>' + (d.time === 'asap' ? 'As soon as possible' : 'Today ' + esc(fmtTime(d.time))) + '</dd>') +
           '<dt>Items</dt><dd>' + (o.lines || []).map(function (l) { return esc(l.qty + ' × ' + l.name); }).join('<br>') + '</dd>' + (d.notes ? '<dt>Notes</dt><dd>' + esc(d.notes) + '</dd>' : '') +
           '<dt>Total</dt><dd><b>' + money(t.total) + '</b> (sub ' + money(t.sub) + ', GST ' + money(t.gst) + (t.del ? ', delivery ' + money(t.del) : '') + ')</dd>' + (e.value ? '<dt>Promised</dt><dd>' + esc(e.title + ' ' + e.value) + '</dd>' : '') + '</dl>' +
-          '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button></div></div>';
+          (isAdminRole() ? '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button></div>' : '') + '</div>';
       }).join('') || '<p class="mute">No orders to show.</p>');
   };
   V.res = function () {
@@ -142,10 +146,23 @@
           '<dt>Placed</dt><dd>' + esc(stamp(r._placed)) + '</dd><dt>Guest</dt><dd>' + esc(r.name || '(not given)') + (r.phone ? ' · <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a>' : '') + '</dd>' +
           '<dt>When</dt><dd>' + esc(r.date) + ' at ' + esc(fmtTime(r.time)) + '</dd><dt>Guests</dt><dd>' + (r.guests || (r.adults + (r.kids || []).length)) + ' (' + r.adults + ' adults' + ((r.kids || []).length ? ', ' + r.kids.length + ' kids, ages ' + esc(ages.join(', ')) : '') + ')</dd>' +
           '<dt>Cuisine</dt><dd>' + esc(CUISINE[r.cuisine] || r.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(SEAT[r.seating] || r.seating) + '</dd></dl>' +
-          '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button></div></div>';
+          (isAdminRole() ? '<div class="row" style="margin:8px 0 0"><button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button></div>' : '') + '</div>';
       }).join('') || '<p class="mute">No reservations to show.</p>');
   };
 
+
+  /* staff accounts */
+  V.staff = function () {
+    var list = S.staff || [];
+    return '<h2>Staff accounts</h2><p class="mute">Staff can see orders and reservations and change their status. They cannot see sales, edit the menu or prices, delete anything or download Excel files.</p>' +
+      '<div class="ed"><h3 style="margin-top:0">Add a staff member</h3><ol class="mute" style="margin:0 0 10px 18px;padding:0"><li>In Firebase → Authentication → Users, click <b>Add user</b> and create their email and password.</li><li>Type the same email below and click Add.</li><li>Give them the page address and their password. They sign in on this same page.</li></ol>' +
+      '<div class="row"><div><label>Staff email</label><input id="stEmail" type="email" placeholder="name@example.com"></div><div class="fit"><button class="btn btn-gold btn-sm" data-act="addstaff">Add</button></div></div></div>' +
+      '<div class="ed"><h3 style="margin-top:0">Current staff (' + list.length + ')</h3>' + (list.length ? list.map(function (em, i) { return '<div class="row" style="align-items:center"><div>' + esc(em) + '</div><div class="fit"><button class="btn btn-ghost btn-sm" data-act="rmstaff" data-i="' + i + '">Remove access</button></div></div>'; }).join('') : '<p class="mute" style="margin:0">No staff yet.</p>') + '</div>' +
+      '<p class="mute">Removing someone here stops them from seeing orders straight away. To fully delete their login, also delete the user in Firebase → Authentication.</p>';
+  };
+  function saveStaff(list, msg) {
+    return FS.update('config/staff', { emails: list }).then(function () { S.staff = list; toast(msg); draw(); }, function (e) { toast(errMsg(e), true); });
+  }
 
   /* sales dashboard */
   var DASH = [['1', 'Today'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['all', 'All time']];
@@ -381,6 +398,12 @@
     }
     switch (a) {
       case 'dash': S.dash = el.getAttribute('data-v'); draw(); break;
+      case 'addstaff': var em = ($('#stEmail').value || '').trim().toLowerCase(), cur = S.staff || [];
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast('Enter a valid email address.', true); break; }
+        if (em === String(FS.adminEmail).toLowerCase()) { toast('That is the administrator account already.', true); break; }
+        if (cur.indexOf(em) >= 0) { toast('Already in the list.', true); break; }
+        saveStaff(cur.concat([em]), 'Added. They can sign in once their login exists in Firebase.'); break;
+      case 'rmstaff': var ri = +el.getAttribute('data-i'); if (confirm('Remove access for ' + S.staff[ri] + '?')) saveStaff(S.staff.filter(function (x, j) { return j !== ri; }), 'Access removed.'); break;
       case 'refresh': refresh(false); break;
       case 'xlsx': exportXlsx(); break;
       case 'bulk': bulkApply(); break;
