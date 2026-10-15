@@ -3,7 +3,7 @@
   'use strict';
   var M = window.RIWAYAT_MENU; if (!M) return;
   var ST = window.RIWAYAT_SETTINGS || window.RIWAYAT_DEFAULT_SETTINGS, U = window.RIWAYAT_UTIL;
-  var HOURS = { week: ST.hours.week.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.week.open) + ' to ' + U.clock(ST.hours.week.close), wknd: ST.hours.wknd.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.wknd.open) + ' to ' + U.clock(ST.hours.wknd.close) };
+  var HOURS = { week: ST.hours.week.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.week.open) + ' to ' + (+ST.hours.week.close % 1440 === 0 && +ST.hours.week.close > 0 ? 'midnight' : U.clock(ST.hours.week.close)), wknd: ST.hours.wknd.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.wknd.open) + ' to ' + (+ST.hours.wknd.close % 1440 === 0 && +ST.hours.wknd.close > 0 ? 'midnight' : U.clock(ST.hours.wknd.close)) };
   var ADDRESS = ST.address;
   var PHONE = ST.phone, EMAIL = ST.email;
   var GST = ST.gstPercent, DELIVERY = ST.deliveryFee, VVIP = ST.vvipCharge, MAXWAIT = +ST.maxDeliveryMinutes || 60;

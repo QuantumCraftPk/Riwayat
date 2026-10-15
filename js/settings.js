@@ -22,5 +22,5 @@
   window.RIWAYAT_DEFAULT_SETTINGS = DEFAULTS;
   window.RIWAYAT_SETTINGS = merge(DEFAULTS, window.RIWAYAT_SETTINGS_OVERRIDE || {});
   window.RIWAYAT_UTIL = { merge: merge, clock: clock, digits: digits,
-    range: function (h) { return clock(h.open) + ' – ' + clock(h.close); } };
+    range: function (h) { return clock(h.open) + ' – ' + (Number(h.close) % 1440 === 0 && Number(h.close) > 0 ? 'midnight' : clock(h.close)); } };
 })();
