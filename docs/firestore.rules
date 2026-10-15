@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Only this signed-in account counts as the administrator.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'ilmfajrpakistan@gmail.com';
+    }
+
+    // A new order or reservation sent by a customer: fixed fields, status must start as "new".
+    function validNew(kind) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id', 'kind', 'status', 'placedAt', 'total', 'name', 'phone', 'type', 'json'])
+        && d.keys().hasAll(['id', 'kind', 'status', 'placedAt', 'total', 'name', 'phone', 'type', 'json'])
+        && d.kind == kind
+        && d.status == 'new'
+        && d.id is string && d.id.size() < 40
+        && d.placedAt is string && d.placedAt.size() < 40
+        && d.total is number
+        && d.name is string && d.name.size() < 100
+        && d.phone is string && d.phone.size() < 40
+        && d.type is string && d.type.size() < 20
+        && d.json is string && d.json.size() < 30000;
+    }
+
+    // Website content (menu, celebrations, settings): anyone can read, only the admin can change.
+    match /site/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders: a customer can place one and read ONLY their own (the long random document id is the key).
+    match /orders/{id} {
+      allow get: if true;
+      allow list, update, delete: if isAdmin();
+      allow create: if validNew('order');
+    }
+
+    match /reservations/{id} {
+      allow get: if true;
+      allow list, update, delete: if isAdmin();
+      allow create: if validNew('reservation');
+    }
+
+    match /{other=**} {
+      allow read, write: if false;
+    }
+  }
+}

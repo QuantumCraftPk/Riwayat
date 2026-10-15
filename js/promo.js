@@ -13,7 +13,7 @@
     '<div class="promo-offer"><span class="ic" aria-hidden="true">🎂</span><h3>Birthday Party</h3><p class="free">Free décor</p><p>Choose from 4 themes</p></div>' +
     '<div class="promo-offer"><span class="ic" aria-hidden="true">💍</span><h3>Engagement Ceremony</h3><p class="free">Free décor</p><p>Choose from 4 themes</p></div></div>' +
     '<p class="sub" style="margin:-4px 0 16px">Minimum guests vary by theme.</p>' +
-    '<div class="promo-actions"><a class="btn btn-gold" href="tel:+923060005226">Call 0306-0005226</a><a class="btn btn-ghost" href="#celebrations" data-close>See the themes</a></div>' +
+    '<div class="promo-actions"><a class="btn btn-gold" href="tel:' + ((window.RIWAYAT_UTIL||{digits:function(){return '+923060005226'}}).digits((window.RIWAYAT_SETTINGS||{}).phone || '0306-0005226')) + '">Call ' + ((window.RIWAYAT_SETTINGS||{}).phone || '0306-0005226') + '</a><a class="btn btn-ghost" href="#celebrations" data-close>See the themes</a></div>' +
     '<button class="promo-skip" data-close>Maybe later</button></div>';
   document.body.appendChild(el);
   function close() {

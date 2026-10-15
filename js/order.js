@@ -2,7 +2,8 @@
 (function () {
   'use strict';
   var M = window.RIWAYAT_MENU;
-  var GST_RATE = 0.16, DELIVERY_FEE = 200;
+  var ST = window.RIWAYAT_SETTINGS || window.RIWAYAT_DEFAULT_SETTINGS;
+  var GST_RATE = (+ST.gstPercent || 0) / 100, DELIVERY_FEE = +ST.deliveryFee || 0;
   var STATE_KEY = 'riwayat_order_state', ORDERS_KEY = 'riwayat_orders';
   var STEP_LABEL = { type: 'Order Type', dine: 'Reservation', menu: 'Menu', bill: 'Bill', details: 'Details', confirm: 'Confirm' };
 
@@ -23,16 +24,17 @@
   var ITEMS = {};
   M.categories.forEach(function (c) { c.groups.forEach(function (g) { g.items.forEach(function (it) {
     if (it.variants && it.variants.length > 1) it.variants.forEach(function (v) {
-      ITEMS[it.id + '|' + v.label] = { key: it.id + '|' + v.label, name: it.name + ' (' + v.label + ')', price: v.price, kind: 'item', preorder: !!it.preorder };
+      ITEMS[it.id + '|' + v.label] = { key: it.id + '|' + v.label, name: it.name + ' (' + v.label + ')', price: v.price, kind: 'item', preorder: !!it.preorder, soldOut: !!it.soldOut };
     });
-    else ITEMS[it.id] = { key: it.id, name: it.name, price: it.price, kind: 'item', preorder: !!it.preorder };
+    else ITEMS[it.id] = { key: it.id, name: it.name, price: it.price, kind: 'item', preorder: !!it.preorder, soldOut: !!it.soldOut };
   }); }); });
 
   /* ---------- state ---------- */
   var S = store(true, STATE_KEY) || {};
-  S.cart = S.cart || {}; S.dine = S.dine || { date: '', time: '', adults: 2, kids: [], cuisine: '', seating: '' };
+  S.cart = S.cart || {}; S.dine = S.dine || { date: '', time: '', adults: 2, kids: [], cuisine: '', seating: '', name: '', phone: '' };
   S.details = S.details || { name: '', phone: '', address: '', time: 'asap', notes: '' };
   if (S.dine.adults == null) S.dine.adults = 2;
+  S.dine.name = S.dine.name || ''; S.dine.phone = S.dine.phone || '';
   if (!Array.isArray(S.dine.kids)) S.dine.kids = [];
   S.step = S.step || 'type'; S.type = S.type || null; S.takeaway = !!S.takeaway; S.tab = S.tab || M.categories[0].id;
   S.done = null;
@@ -43,7 +45,7 @@
     return S.type === 'dine' ? ['type', 'dine'] : ['type', 'menu', 'bill', 'details', 'confirm'];
   }
   function lines() {
-    return Object.keys(S.cart).filter(function (k) { return ITEMS[k] && S.cart[k] > 0; }).map(function (k) {
+    return Object.keys(S.cart).filter(function (k) { return ITEMS[k] && !ITEMS[k].soldOut && S.cart[k] > 0; }).map(function (k) {
       var i = ITEMS[k]; return { key: k, name: i.name, price: i.price, kind: i.kind, days: i.days, preorder: i.preorder, qty: S.cart[k], total: i.price * S.cart[k] };
     });
   }
@@ -54,7 +56,7 @@
     return { sub: sub, gst: gst, del: del, total: sub + gst + del };
   }
   /* ---------- time estimate (never more than 60 minutes) ---------- */
-  var MAX_WAIT = 60;
+  var MAX_WAIT = +ST.maxDeliveryMinutes || 60;
   function clock(d) { return fmtTime(d.getHours() * 60 + d.getMinutes()); }
   function etaFor(o, placed) {
     var n = o.lines.reduce(function (a, l) { return a + l.qty; }, 0);
@@ -76,10 +78,10 @@
 
   /* ---------- time slots ---------- */
   function slots(dateStr, mode) {
-    // Hours: Mon-Fri 12:00 pm - 11:00 pm; Sat & Sun 8:00 am - 12:00 am (last slot 30 min before closing)
+    // Hours come from the settings (last slot 30 min before closing)
     var out = [], now = new Date(), isToday = dateStr === ymd(now), nowMin = now.getHours() * 60 + now.getMinutes() + 30;
     var wd = dateStr ? parseYmd(dateStr).getDay() : now.getDay(), weekend = wd === 0 || wd === 6;
-    var first = weekend ? 8 * 60 : 12 * 60, last = weekend ? 23 * 60 + 30 : 22 * 60 + 30;
+    var h = weekend ? ST.hours.wknd : ST.hours.week, first = +h.open, last = +h.close - 30;
     for (var m = first; m <= last; m += 30) if (!isToday || m >= nowMin) out.push(m);
     return out;
   }
@@ -103,6 +105,7 @@
   }
   function ctlHtml(key) {
     var q = S.cart[key] | 0;
+    if (ITEMS[key] && ITEMS[key].soldOut) return '<span class="ctl" data-ctl="' + esc(key) + '"><span class="soldout">Sold out</span></span>';
     return '<span class="ctl" data-ctl="' + esc(key) + '">' + (q ? stepperHtml(key, q) : '<button class="btn btn-gold btn-sm" data-act="add" data-key="' + esc(key) + '">Add</button>') + '</span>';
   }
   function refreshCtl(key) {
@@ -150,7 +153,7 @@
 
   var CUISINES = [['desi', 'Desi'], ['arabic', 'Arabic'], ['continental', 'Continental'], ['chinese', 'Chinese'], ['buffet', 'Buffet'], ['mix', 'Mix'], ['undecided', 'Not decided yet']];
   var SEATING = [
-    ['vvip', 'VVIP Hall', 'Private, exclusive dining', 'grand-private-vvip', 'Rs 2,500 additional'],
+    ['vvip', 'VVIP Hall', 'Private, exclusive dining', 'grand-private-vvip', money(+ST.vvipCharge) + ' additional'],
     ['indoor', 'Indoor', 'Main dining hall', 'main-dining-hall'],
     ['terrace', 'Terrace', 'Open-air arched terrace', 'intimate-alcove'],
     ['lawn', 'Lawn', 'Courtyard lawn with fountains', 'courtyard-dining'],
@@ -197,7 +200,8 @@
         '<div class="kidages" id="kidAges">' + kidAgesHtml() + '</div><p class="hint" id="guestTotal">' + guestTotalText() + '</p><div class="err" id="e-dGuests" role="alert"></div></div>' +
       '<div class="fld" id="f-dCuisine"><span class="lbl">Type of cuisine</span><div class="chips" role="radiogroup" aria-label="Type of cuisine">' + chips + '</div><div class="err" id="e-dCuisine" role="alert"></div></div>' +
       '<div class="fld" id="f-dSeat"><span class="lbl">Choice of seating</span><div class="seats" role="radiogroup" aria-label="Choice of seating">' + seats + '</div><div class="err" id="e-dSeat" role="alert"></div></div>' +
-      '</div>' + '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="back">← Back</button><button class="btn btn-gold" data-act="confirmres">Confirm Reservation</button></div>';
+      '<div class="row2">' + field('dName', 'Your name', '<input id="dName" autocomplete="name" value="' + esc(d.name) + '">') + field('dPhone', 'Phone', '<input id="dPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="03XX XXXXXXX" value="' + esc(d.phone) + '">') + '</div>' +
+      '</div>' + '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="back">← Back</button><button class="btn btn-gold" data-act="confirmres" id="btnRes">Request Reservation</button></div><div class="warn" id="sendErr" role="alert" hidden style="max-width:760px"></div>';
   };
 
   function ctxLine() {
@@ -266,18 +270,32 @@
     var t = o.totals;
     return '<div class="sumbox"><h3>Details</h3><dl>' + d.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl></div>' +
       '<div class="bill"><table><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Total</th></tr></thead><tbody>' + o.lines.map(function (l) { return '<tr><td>' + esc(l.name) + '</td><td class="r">' + l.qty + ' × ' + money(l.price) + '</td><td class="r">' + money(l.total) + '</td></tr>'; }).join('') + '</tbody></table>' +
-      '<table style="margin-top:10px"><tbody><tr class="tot"><td>Subtotal</td><td class="r">' + money(t.sub) + '</td></tr><tr class="tot"><td>GST (16%)</td><td class="r">' + money(t.gst) + '</td></tr>' + (t.del ? '<tr class="tot"><td>Delivery fee</td><td class="r">' + money(t.del) + '</td></tr>' : '') + '<tr class="grand"><td>Total</td><td class="r">' + money(t.total) + '</td></tr></tbody></table></div>';
+      '<table style="margin-top:10px"><tbody><tr class="tot"><td>Subtotal</td><td class="r">' + money(t.sub) + '</td></tr><tr class="tot"><td>GST (' + Math.round(GST_RATE * 100) + '%)</td><td class="r">' + money(t.gst) + '</td></tr>' + (t.del ? '<tr class="tot"><td>Delivery fee</td><td class="r">' + money(t.del) + '</td></tr>' : '') + '<tr class="grand"><td>Total</td><td class="r">' + money(t.total) + '</td></tr></tbody></table></div>';
   }
   function draft() { return { type: S.type, dine: S.dine, details: S.details, lines: lines(), totals: totals() }; }
   views.confirm = function () {
     return head('Confirm Your Order', 'Please review everything. Your order is only placed when you press Confirm Order.') + summaryHtml(draft()) +
-      '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="back">← Back</button><button class="btn btn-gold" data-act="confirm">Confirm Order</button></div>';
+      '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="back">← Back</button><button class="btn btn-gold" data-act="confirm" id="btnOrd">Confirm Order</button></div><div class="warn" id="sendErr" role="alert" hidden style="max-width:760px"></div>';
   };
   function reservationDone(o) {
     var c = lookup(CUISINES, o.cuisine), st = lookup(SEATING, o.seating);
-    return '<div class="done-card"><div class="tick" aria-hidden="true">✓</div><h2 id="stepTitle" tabindex="-1">Reservation Confirmed</h2><p class="lead" style="margin-bottom:8px">We look forward to welcoming you.</p><div class="oid">' + esc(o.id) + '</div><p class="note">Simulated reservation — nothing was actually booked.</p></div>' +
-      '<div class="sumbox" style="margin-top:22px"><h3>Your reservation</h3><dl><dt>Date</dt><dd>' + esc(fmtDate(o.date)) + '</dd><dt>Time</dt><dd>' + fmtTime(+o.time) + '</dd><dt>Guests</dt><dd>' + esc(guestsText(o)) + '</dd><dt>Cuisine</dt><dd>' + esc(c ? c[1] : o.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(st ? st[1] : o.seating) + (o.seating === 'vvip' ? ' <em style="color:var(--gold2)">(Rs 2,500 additional)</em>' : '') + '</dd></dl></div>' +
+    return '<div class="done-card"><div class="tick" aria-hidden="true">✓</div><h2 id="stepTitle" tabindex="-1">Reservation Requested</h2><p class="lead" style="margin-bottom:8px">Thank you, ' + esc(o.name) + '. The restaurant will confirm your table.</p><div class="oid">' + esc(o.id) + '</div>' + statusHtml(o) + '<p class="note">Conceptual demo restaurant. Keep your reservation number handy.</p></div>' +
+      '<div class="sumbox" style="margin-top:22px"><h3>Your reservation</h3><dl><dt>Name</dt><dd>' + esc(o.name) + '</dd><dt>Phone</dt><dd>' + esc(o.phone) + '</dd><dt>Date</dt><dd>' + esc(fmtDate(o.date)) + '</dd><dt>Time</dt><dd>' + fmtTime(+o.time) + '</dd><dt>Guests</dt><dd>' + esc(guestsText(o)) + '</dd><dt>Cuisine</dt><dd>' + esc(c ? c[1] : o.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(st ? st[1] : o.seating) + (o.seating === 'vvip' ? ' <em style="color:var(--gold2)">(' + money(+ST.vvipCharge) + ' additional)</em>' : '') + '</dd></dl></div>' +
       '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="print">Print</button><button class="btn btn-ghost" onclick="location.href=\'index.html\'">Back to website</button><button class="btn btn-gold" data-act="new">Make another booking</button></div>';
+  }
+  function statusHtml(o) {
+    if (!o.token) return '';
+    return '<div class="eta" id="liveStatus"><span class="eta-t">Status</span><b class="eta-v" id="liveStatusV">' + esc(window.RiwayatSync.statusText(o.kind === 'reservation' ? 'reservation' : 'order', o.status || 'new')) + '</b><small>This updates automatically while this page is open.</small></div>';
+  }
+  var pollTimer = null;
+  function poll(o) {
+    clearInterval(pollTimer); if (!o || !o.token || !window.RiwayatSync || !window.RiwayatSync.available()) return;
+    var kind = o.kind === 'reservation' ? 'reservation' : 'order';
+    pollTimer = setInterval(function () {
+      window.RiwayatSync.status(kind, o.token).then(function (st) {
+        var el = $('#liveStatusV'); if (st && el) { o.status = st; el.textContent = window.RiwayatSync.statusText(kind, st); }
+      }, function () { /* try again next time */ });
+    }, 20000);
   }
   function etaHtml(o) {
     var e = o.eta; if (!e) return '';
@@ -286,7 +304,7 @@
   views.done = function () {
     var o = S.done;
     if (o.kind === 'reservation') return reservationDone(o);
-    return '<div class="done-card"><div class="tick" aria-hidden="true">✓</div><h2 id="stepTitle" tabindex="-1">Order Confirmed</h2><p class="lead" style="margin-bottom:8px">Thank you, ' + esc(o.type === 'dine' ? o.dine.name : o.details.name) + '!</p><div class="oid">' + esc(o.id) + '</div>' + etaHtml(o) + '<p class="lead" style="margin:6px 0 0">Final amount: <b style="color:var(--gold2)">' + money(o.totals.total) + '</b></p><p class="note">Simulated order — no payment was taken and nothing was sent to a kitchen.</p></div><div style="max-width:760px;margin:22px auto 0">' + summaryHtml(o) + '</div>' +
+    return '<div class="done-card"><div class="tick" aria-hidden="true">✓</div><h2 id="stepTitle" tabindex="-1">Order Confirmed</h2><p class="lead" style="margin-bottom:8px">Thank you, ' + esc(o.details.name) + '!</p><div class="oid">' + esc(o.id) + '</div>' + statusHtml(o) + etaHtml(o) + '<p class="lead" style="margin:6px 0 0">Final amount: <b style="color:var(--gold2)">' + money(o.totals.total) + '</b></p><p class="note">Conceptual demo restaurant — no payment is taken. Pay at pickup or on delivery.</p></div><div style="max-width:760px;margin:22px auto 0">' + summaryHtml(o) + '</div>' +
       '<div class="actions wide" style="max-width:760px"><button class="btn btn-ghost" data-act="print">Print</button><button class="btn btn-ghost" onclick="location.href=\'index.html\'">Back to website</button><button class="btn btn-gold" data-act="new">Place another order</button></div>';
   };
 
@@ -300,13 +318,15 @@
     return true;
   }
   function validateDine() {
-    var d = S.dine, e = { dDate: '', dTime: '', dGuests: '', dCuisine: '', dSeat: '' }, first = null;
+    var d = S.dine, e = { dDate: '', dTime: '', dGuests: '', dCuisine: '', dSeat: '', dName: '', dPhone: '' }, first = null;
     if (!d.date) e.dDate = 'Please choose a date.'; else if (d.date < ymd(new Date())) e.dDate = 'That date has passed.';
     if (!d.time) e.dTime = 'Please choose a time.';
     if (d.adults < 1) e.dGuests = 'At least one adult is needed.';
     else if (d.kids.some(function (a) { return a === '' || a == null; })) e.dGuests = 'Please select the age of each child.';
     if (!d.cuisine) e.dCuisine = 'Please choose a type of cuisine.';
     if (!d.seating) e.dSeat = 'Please choose where you would like to sit.';
+    if ((d.name || '').trim().length < 2) e.dName = 'Please enter your name.';
+    if (!phoneOk(d.phone)) e.dPhone = 'Enter a valid mobile number, e.g. 0300 1234567.';
     Object.keys(e).forEach(function (k) { flag(k, e[k]); if (e[k] && !first) first = k; });
     if (first) {
       var el = document.getElementById(first) || Array.prototype.filter.call(document.querySelectorAll('#f-' + first + ' select'), function (x) { return !x.value; })[0] || document.querySelector('#f-' + first + ' input, #f-' + first + ' button');
@@ -350,26 +370,42 @@
     if (i < st.length - 1) go(st[i + 1]);
   }
   function back() { var st = steps(), i = st.indexOf(S.step); if (i > 0) go(st[i - 1]); }
-  function reset() { S.cart = {}; S.type = null; S.takeaway = false; S.step = 'type'; S.done = null; S.dine = { date: '', time: '', adults: 2, kids: [], cuisine: '', seating: '' }; S.details = { name: '', phone: '', address: '', time: 'asap', notes: '' }; save(); renderStage(); window.scrollTo(0, 0); }
+  function reset() { S.cart = {}; S.type = null; S.takeaway = false; S.step = 'type'; S.done = null; S.dine = { date: '', time: '', adults: 2, kids: [], cuisine: '', seating: '', name: '', phone: '' }; S.details = { name: '', phone: '', address: '', time: 'asap', notes: '' }; save(); renderStage(); window.scrollTo(0, 0); }
+
+  function sendErr(msg) { var e = $('#sendErr'); if (e) { e.textContent = msg; e.hidden = !msg; } }
+  function busy(id, on, label) { var b = $('#' + id); if (!b) return; b.disabled = on; if (label) b.textContent = on ? 'Sending…' : label; }
+  function finishDone(o) {
+    S.done = o; try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
+    renderStage(); window.scrollTo(0, 0); var h = $('#stepTitle'); if (h) h.focus({ preventScroll: true }); poll(o);
+  }
+  function submit(kind, rec, btn, label, ok) {
+    if (!window.RiwayatSync || !window.RiwayatSync.available()) { ok(rec); return; } // demo without a database
+    busy(btn, true, label); sendErr('');
+    window.RiwayatSync.submit(kind, rec).then(function (tok) { rec.token = tok; rec.status = 'new'; ok(rec); }, function () {
+      busy(btn, false, label);
+      sendErr('We could not reach the restaurant just now, so nothing was sent. Please check your internet connection and press the button again.');
+    });
+  }
 
   function confirmReservation() {
     if (!validateDine()) return;
-    var d = S.dine, r = { kind: 'reservation', date: d.date, time: d.time, adults: d.adults, kids: d.kids.slice(), guests: guestCount(d), cuisine: d.cuisine, seating: d.seating };
+    var d = S.dine, r = { kind: 'reservation', type: 'reservation', name: d.name.trim(), phone: d.phone.trim(), date: d.date, time: d.time, adults: d.adults, kids: d.kids.slice(), guests: guestCount(d), cuisine: d.cuisine, seating: d.seating };
     r.id = 'RV-' + ymd(new Date()).replace(/-/g, '').slice(2) + '-' + Math.floor(1000 + Math.random() * 9000);
     r.placedAt = new Date().toISOString();
-    try { var all = JSON.parse(localStorage.getItem('riwayat_reservations') || '[]'); all.push(r); localStorage.setItem('riwayat_reservations', JSON.stringify(all)); } catch (e) { /* demo only */ }
-    if (window.RiwayatSync) window.RiwayatSync.send('reservation', r);
-    S.done = r; try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
-    renderStage(); window.scrollTo(0, 0); var h = $('#stepTitle'); if (h) h.focus({ preventScroll: true });
+    submit('reservation', r, 'btnRes', 'Request Reservation', function (rec) {
+      try { var all = JSON.parse(localStorage.getItem('riwayat_reservations') || '[]'); all.push(rec); localStorage.setItem('riwayat_reservations', JSON.stringify(all)); } catch (e) { /* ignore */ }
+      finishDone(rec);
+    });
   }
   function confirmOrder() {
     var o = draft(); // final amount is calculated only now, on explicit approval
     o.id = 'RW-' + ymd(new Date()).replace(/-/g, '').slice(2) + '-' + Math.floor(1000 + Math.random() * 9000);
     var now = new Date(); o.placedAt = now.toISOString(); o.eta = etaFor(o, now);
-    try { var all = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); all.push(o); localStorage.setItem(ORDERS_KEY, JSON.stringify(all)); } catch (e) { /* demo only */ }
-    if (window.RiwayatSync) window.RiwayatSync.send('order', o);
-    S.done = o; S.cart = {}; try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
-    renderStage(); window.scrollTo(0, 0); var h = $('#stepTitle'); if (h) h.focus({ preventScroll: true });
+    delete o.dine;
+    submit('order', o, 'btnOrd', 'Confirm Order', function (rec) {
+      try { var all = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); all.push(rec); localStorage.setItem(ORDERS_KEY, JSON.stringify(all)); } catch (e) { /* ignore */ }
+      S.cart = {}; finishDone(rec);
+    });
   }
 
   /* ---------- events ---------- */
@@ -408,7 +444,7 @@
   });
   document.addEventListener('input', function (e) {
     var id = e.target.id, v = e.target.value;
-    var map = { xName: ['details', 'name'], xPhone: ['details', 'phone'], xAddr: ['details', 'address'], xNotes: ['details', 'notes'] };
+    var map = { xName: ['details', 'name'], xPhone: ['details', 'phone'], xAddr: ['details', 'address'], xNotes: ['details', 'notes'], dName: ['dine', 'name'], dPhone: ['dine', 'phone'] };
     if (map[id]) { S[map[id][0]][map[id][1]] = v; save(); flag(id, ''); }
   });
   document.addEventListener('change', function (e) {

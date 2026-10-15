@@ -93,8 +93,8 @@
       </div>
       <div class="party-cta">
         <p>Minimum guest numbers vary by theme. Call us to plan your celebration.</p>
-        <a class="btn btn-gold" href="tel:+923060005226">Call 0306-0005226</a>
-        <a class="btn btn-ghost" href="mailto:management@riwayat.com">Email us</a>
+        <a class="btn btn-gold" data-bind-href="tel" href="tel:+923060005226"><span data-bind="phone-call">Call 0306-0005226</span></a>
+        <a class="btn btn-ghost" data-bind-href="mail" href="mailto:management@riwayat.com">Email us</a>
       </div>
     </div>
   </section>
@@ -126,9 +126,9 @@
         <div class="orn" aria-hidden="true"></div>
       </header>
       <div class="contact-grid">
-        <div class="card"><h3>Location</h3><p>MM Alam Road<br>Gulberg, Lahore, Pakistan</p></div>
-        <div class="card"><h3>Hours</h3><p>Monday – Friday<br><b>12:00 pm – 11:00 pm</b></p><p style="margin-top:8px">Saturday &amp; Sunday<br><b>8:00 am – 12:00 am</b></p></div>
-        <div class="card"><h3>Reservations</h3><p><a href="tel:+923060005226">0306-0005226</a><br><a href="mailto:management@riwayat.com">management@riwayat.com</a></p></div>
+        <div class="card"><h3>Location</h3><p><span data-bind="address">MM Alam Road<br>Gulberg, Lahore</span><br>Pakistan</p></div>
+        <div class="card"><h3>Hours</h3><p><span data-bind="hours-week-label">Monday – Friday</span><br><b data-bind="hours-week">12:00 pm – 11:00 pm</b></p><p style="margin-top:8px"><span data-bind="hours-wknd-label">Saturday &amp; Sunday</span><br><b data-bind="hours-wknd">8:00 am – 12:00 am</b></p></div>
+        <div class="card"><h3>Reservations</h3><p><a data-bind-href="tel" data-bind="phone" href="tel:+923060005226">0306-0005226</a><br><a data-bind-href="mail" data-bind="email" href="mailto:management@riwayat.com">management@riwayat.com</a></p></div>
       </div>
       <p class="note center">This is a conceptual demo website. No real orders, payments or bookings are processed.</p>
     </div>
@@ -146,11 +146,6 @@
   <img alt="" id="lbImg"><p id="lbCap"></p>
 </div>
 
-<script src="data/menu-data.js"></script>
-<script src="js/main.js"></script>
-<script src="data/celebrations-data.js"></script>
-<script src="js/celebrations.js"></script>
-<script src="js/chatbot.js"></script>
-<script src="js/promo.js"></script>
+<script src="js/boot.js" data-scripts="data/menu-data.js,data/celebrations-data.js,js/settings.js,js/firebase-config.js,js/fs.js,@live,js/bind.js,js/main.js,js/celebrations.js,js/chatbot.js,js/promo.js"></script>
 </body>
 </html>

@@ -3,56 +3,44 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>Orders &amp; Reservations · Riwayat Staff</title>
+<meta name="robots" content="noindex,nofollow">
+<title>Admin · Riwayat</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
-<style>
- .adm{max-width:1100px;margin:0 auto;padding:100px 18px 60px}
- .adm h1{font:500 clamp(26px,4vw,38px) Cinzel,serif;color:var(--gold2);margin:0 0 6px}
- .adm .lead{color:var(--mute);margin:0 0 18px}
- .bar{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 26px}
- .box{border:1px solid var(--line);background:var(--card);padding:14px 16px;margin-bottom:22px;color:var(--ivory)}
- .box b{color:var(--gold2)}
- .adm h2{font:500 20px Cinzel,serif;color:var(--gold);margin:26px 0 10px}
- .tw{overflow-x:auto;border:1px solid var(--line)}
- table.t{border-collapse:collapse;width:100%;min-width:720px;font-size:15px}
- .t th,.t td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
- .t th{color:var(--gold);font:500 12px Cinzel,serif;letter-spacing:.08em;text-transform:uppercase;background:var(--card)}
- .t td.r,.t th.r{text-align:right}
- .empty{padding:18px;color:var(--mute);font-style:italic}
- .stat{display:flex;gap:12px;flex-wrap:wrap}
- .stat div{border:1px solid var(--line);padding:10px 16px;background:var(--card)}
- .stat b{display:block;font:600 24px Cinzel,serif;color:var(--gold2)}
-</style>
+<link rel="stylesheet" href="css/admin.css">
 </head>
-<body>
-<header class="site-header">
+<body class="adm-body">
+<header class="adm-top">
   <a class="brand" href="index.html" aria-label="Riwayat home"><img src="assets/img/logo.png" alt="Riwayat Restaurant"></a>
-  <nav class="nav open-static" style="display:flex;position:static;background:none;border:0;padding:0"><a href="index.html">← Back to website</a></nav>
+  <span class="adm-title">Admin</span>
+  <span class="adm-user" id="who"></span>
+  <button class="btn btn-ghost btn-sm" id="btnOut" hidden>Sign out</button>
 </header>
-<main class="adm">
-  <h1>Orders &amp; Reservations</h1>
-  <p class="lead">Staff view. Download everything as one Excel file.</p>
 
-  <div class="stat" id="stats"></div>
-  <div class="bar">
-    <button class="btn btn-gold" id="btnXlsx">⬇ Download Excel (.xlsx)</button>
-    <button class="btn btn-ghost" id="btnRefresh">Refresh</button>
-    <button class="btn btn-ghost" id="btnClear">Clear saved data</button>
-  </div>
-  <div class="box" id="src"></div>
-
-  <h2>Takeaway orders</h2>
-  <div class="tw" id="ordersWrap"></div>
-  <h2>Dine In reservations</h2>
-  <div class="tw" id="resWrap"></div>
+<main id="login" class="adm-login" hidden>
+  <form id="loginForm" class="adm-card" autocomplete="on">
+    <h1>Staff sign in</h1>
+    <p class="mute">Only the restaurant administrator can sign in here.</p>
+    <label for="lEmail">Email</label><input id="lEmail" type="email" autocomplete="username" required>
+    <label for="lPass">Password</label><input id="lPass" type="password" autocomplete="current-password" required>
+    <div class="adm-err" id="lErr" role="alert" hidden></div>
+    <button class="btn btn-gold" id="lBtn" type="submit">Sign in</button>
+  </form>
 </main>
 
+<main id="app" class="adm" hidden>
+  <nav class="adm-tabs" id="tabs" role="tablist"></nav>
+  <div id="notice" class="adm-note" hidden></div>
+  <section id="view"></section>
+</main>
+
+<div class="savebar" id="savebar" hidden>
+  <span id="saveMsg">You have unsaved changes.</span>
+  <button class="btn btn-ghost btn-sm" id="btnDiscard">Discard</button>
+  <button class="btn btn-gold btn-sm" id="btnSave">Save changes</button>
+</div>
+
 <script src="js/vendor/xlsx.full.min.js"></script>
-<script src="data/menu-data.js"></script>
-<script src="data/celebrations-data.js"></script>
-<script src="js/config.js"></script>
-<script src="js/admin.js"></script>
+<script src="js/boot.js" data-scripts="data/menu-data.js,data/celebrations-data.js,js/settings.js,js/firebase-config.js,js/fs.js,js/admin-app.js"></script>
 </body>
 </html>

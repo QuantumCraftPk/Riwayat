@@ -34,7 +34,7 @@
     return '<div class="price">'+money(it.price)+'</div>';
   }
   function itemHtml(it){
-    return '<article class="item"><div><h5>'+esc(it.name)+(it.preorder?'<span class="tag">Pre-order</span>':'')+'</h5>'+
+    return '<article class="item'+(it.soldOut?' is-sold':'')+'"><div><h5>'+esc(it.name)+(it.preorder?'<span class="tag">Pre-order</span>':'')+(it.soldOut?'<span class="tag soldtag">Sold out</span>':'')+'</h5>'+
       (it.desc?'<p>'+esc(it.desc)+'</p>':'')+'</div>'+priceHtml(it)+'</article>';
   }
   function catHtml(c){

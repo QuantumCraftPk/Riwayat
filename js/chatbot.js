@@ -2,10 +2,11 @@
 (function () {
   'use strict';
   var M = window.RIWAYAT_MENU; if (!M) return;
-  var HOURS = { week: 'Monday to Friday: 12:00 pm to 11:00 pm', wknd: 'Saturday &amp; Sunday: 8:00 am to 12:00 am' };
-  var ADDRESS = 'MM Alam Road, Gulberg, Lahore';
-  var PHONE = '0306-0005226', EMAIL = 'management@riwayat.com';
-  var GST = 16, DELIVERY = 200;
+  var ST = window.RIWAYAT_SETTINGS || window.RIWAYAT_DEFAULT_SETTINGS, U = window.RIWAYAT_UTIL;
+  var HOURS = { week: ST.hours.week.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.week.open) + ' to ' + U.clock(ST.hours.week.close), wknd: ST.hours.wknd.label.replace('&', '&amp;') + ': ' + U.clock(ST.hours.wknd.open) + ' to ' + U.clock(ST.hours.wknd.close) };
+  var ADDRESS = ST.address;
+  var PHONE = ST.phone, EMAIL = ST.email;
+  var GST = ST.gstPercent, DELIVERY = ST.deliveryFee, VVIP = ST.vvipCharge, MAXWAIT = ST.maxDeliveryMinutes;
   var onOrderPage = !document.getElementById('gallery');
   var menuHref = 'menu.html';
   var galleryHref = onOrderPage ? 'index.html#gallery' : '#gallery';
@@ -17,7 +18,7 @@
   /* ---------- searchable menu index ---------- */
   var INDEX = [];
   M.categories.forEach(function (c) { c.groups.forEach(function (g) { g.items.forEach(function (it) {
-    INDEX.push({ name: it.name, desc: it.desc || '', cat: c.name, price: it.price, variants: it.variants, preorder: it.preorder });
+    INDEX.push({ name: it.name, desc: it.desc || '', cat: c.name, price: it.price, variants: it.variants, preorder: it.preorder, soldOut: it.soldOut });
   }); }); });
   var STOP = 'what whats is are the a an of in on to for you your do does have has any tell me about price prices cost costs much how many much rs rupees menu please can i we get want like show give there with and or it its my our the options option available'.split(' ');
   var SYN = { veg: ['vegetable', 'paneer', 'daal', 'salad', 'hummus', 'falafel', 'mushroom'], vegetarian: ['vegetable', 'paneer', 'daal', 'salad', 'hummus', 'falafel', 'mushroom'], chai: ['chai', 'tea'], tea: ['tea', 'chai'], bbq: ['tikka', 'boti', 'kabab', 'seekh', 'chop'], kebab: ['kabab'], kebabs: ['kabab'], shawarma: ['shawarma'], pizza: ['pizza'], pasta: ['fettuccine', 'penne', 'lasagna', 'pasta'] };
@@ -40,7 +41,7 @@
   var lastBest = 0;
   function itemLine(it) {
     var p = it.variants && it.variants.length > 1 ? it.variants.map(function (v) { return v.label + ' ' + money(v.price); }).join(' / ') : money(it.price);
-    return '<li><b>' + esc(it.name) + '</b> — ' + p + (it.desc ? '<br><small>' + esc(it.desc) + '</small>' : '') + '</li>';
+    return '<li><b>' + esc(it.name) + '</b> — ' + p + (it.soldOut ? ' <i>(sold out today)</i>' : '') + (it.desc ? '<br><small>' + esc(it.desc) + '</small>' : '') + '</li>';
   }
 
   /* ---------- replies ---------- */
@@ -80,7 +81,7 @@
     { t: /birthday|engagement|celebrat|decor|themes?\b|\b(party|parties|events?)\b(?! of)|mangni/i, f: function (q) {
         var P = window.RIWAYAT_PARTIES, names = function (k) { return P && P[k] ? P[k].themes.map(function (t) { return esc(t.name); }).join(', ') : ''; };
         return r('We host <b>Birthday Parties</b> and <b>Engagement Ceremonies</b> with <b>free décor</b> — choose from <b>4 themes</b> each.' + (P ? '<ul><li><b>Birthday:</b> ' + names('birthday') + '</li><li><b>Engagement:</b> ' + names('engagement') + '</li></ul>' : '<br>') + 'Minimum guests vary by theme. Call <b>' + PHONE + '</b> or email <b>' + EMAIL + '</b> to plan yours. ' + link(onOrderPage ? 'index.html#celebrations' : '#celebrations', 'See the themes →'), ['Birthday themes', 'Engagement themes', 'Contact details']); } },
-    { t: /seat|sitting|table type|indoor|terrace|lawn|roof|vvip|private|outdoor|bethna/i, f: function () { return r('You can choose where to sit when you book:<ul><li><b>VVIP Hall</b> — private, exclusive dining (<i>Rs 2,500 additional</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — open-air arched terrace</li><li><b>Lawn</b> — courtyard lawn with fountains</li><li><b>Roof Top</b> — city views and lantern light</li></ul>' + ACT.book, ['Book a table', 'Opening hours']); } },
+    { t: /seat|sitting|table type|indoor|terrace|lawn|roof|vvip|private|outdoor|bethna/i, f: function () { return r('You can choose where to sit when you book:<ul><li><b>VVIP Hall</b> — private, exclusive dining (<i>' + money(VVIP) + ' additional</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — open-air arched terrace</li><li><b>Lawn</b> — courtyard lawn with fountains</li><li><b>Roof Top</b> — city views and lantern light</li></ul>' + ACT.book, ['Book a table', 'Opening hours']); } },
     { t: /kid|child|children|bachch|baby|toddler/i, f: function () { var k = M.buffets.filter(function (b) { return b.kidsNote.length; }); return r('When booking a table you tell us how many <b>adults</b> and <b>kids</b> are coming and each child’s age (up to 12 years).' + (k.length ? '<br><br>Buffet kids pricing:<ul>' + k.map(function (b) { return '<li><b>' + esc(b.name) + '</b>: ' + esc(b.kidsNote.join(' ')) + '</li>'; }).join('') + '</ul>' : '') + ACT.book, ['Book a table', 'Buffet prices']); } },
     { t: /book|reserv|table for|dine[- ]?in|booking|ٹیبل/i, f: function () { return r('Booking a table takes a minute:<ol><li>Choose <b>Dine In</b></li><li>Pick the <b>date and time</b></li><li>Enter <b>adults</b>, and <b>kids with their ages</b></li><li>Choose a <b>cuisine</b> (or Mix / Not decided yet)</li><li>Choose your <b>seating</b> and confirm</li></ol>' + ACT.book, ['Seating options', 'Opening hours']); } },
     { t: /weather|rain|raining|hot today|cold today|temperature|garmi|sardi|barish|بارش|موسم/i, f: function () { return r('I cannot check the weather, but Riwayat has a seat for every mood: <b>Indoor</b> seating, <b>Terrace</b>, <b>Lawn</b> and <b>Roof Top</b> for open-air evenings, and the <b>VVIP Hall</b> for private dining. Choose your seating when you ' + ACT.book, ['Seating options', 'Opening hours', 'Book a table']); } },
