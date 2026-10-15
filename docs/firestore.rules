@@ -14,11 +14,12 @@ service cloud.firestore {
         && request.auth.token.email in get(/databases/$(database)/documents/config/staff).data.emails;
     }
 
-    // Staff may only change the status field, and only to a known value.
+    // Staff may only change the status field (and its time stamp), and only to a known value.
     function staffStatusOnly(allowed) {
       return isStaff()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-        && request.resource.data.status in allowed;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusAt'])
+        && request.resource.data.status in allowed
+        && (!('statusAt' in request.resource.data) || request.resource.data.statusAt is string);
     }
 
     // A new order or reservation sent by a customer: fixed fields, status must start as "new".
@@ -47,7 +48,7 @@ service cloud.firestore {
     match /orders/{id} {
       allow get: if true;
       allow list: if isAdmin() || isStaff();
-      allow update: if isAdmin() || staffStatusOnly(['new', 'preparing', 'ready', 'completed', 'cancelled']);
+      allow update: if isAdmin() || staffStatusOnly(['new', 'accepted', 'preparing', 'ready', 'completed', 'cancelled']);
       allow delete: if isAdmin();
       allow create: if validNew('order');
     }

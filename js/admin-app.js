@@ -10,8 +10,8 @@
   var CUISINE = { desi: 'Desi', arabic: 'Arabic', continental: 'Continental', chinese: 'Chinese', buffet: 'Buffet', mix: 'Mix', undecided: 'Not decided yet' };
   var SEAT = { vvip: 'VVIP Hall', indoor: 'Indoor', terrace: 'Terrace', lawn: 'Lawn', roof: 'Roof Top', rooftop: 'Roof Top' };
   var TYPE = { pickup: 'Takeaway - Pickup', delivery: 'Takeaway - Delivery' };
-  var OST = ['new', 'preparing', 'ready', 'completed', 'cancelled'], RST = ['new', 'confirmed', 'declined'];
-  var LBL = { 'new': 'New', preparing: 'Preparing', ready: 'Ready', completed: 'Completed', cancelled: 'Cancelled', confirmed: 'Confirmed', declined: 'Declined' };
+  var OST = ['new', 'accepted', 'preparing', 'ready', 'completed', 'cancelled'], RST = ['new', 'confirmed', 'declined'];
+  var LBL = { 'new': 'New', accepted: 'Accepted', preparing: 'Preparing', ready: 'Ready', completed: 'Completed', cancelled: 'Cancelled', confirmed: 'Confirmed', declined: 'Declined' };
 
   var S = { tab: 'orders', orders: [], res: [], ofilter: 'all', rfilter: 'all', cat: 0, q: '', loaded: false,
     docs: { menu: null, cel: null, set: null }, dirty: { menu: false, cel: false, set: false }, dash: '7', bulk: { pct: 5, scope: 'all', round: 10, buffets: true } };
@@ -65,7 +65,7 @@
   }
   function loadRecords() {
     return Promise.all([FS.list('orders', 'placedAt', 500), FS.list('reservations', 'placedAt', 500)]).then(function (r) {
-      var f = function (kind) { return function (d) { var rec = parse(d.json) || {}; rec._doc = d._id; rec._status = d.status || 'new'; rec._placed = d.placedAt || rec.placedAt; return rec; }; };
+      var f = function (kind) { return function (d) { var rec = parse(d.json) || {}; rec._doc = d._id; rec._status = d.status || 'new'; rec._statusAt = d.statusAt || ''; rec._placed = d.placedAt || rec.placedAt; return rec; }; };
       S.orders = r[0].map(f('order')); S.res = r[1].map(f('reservation'));
     });
   }
@@ -143,8 +143,8 @@
           '<dt>Placed</dt><dd>' + esc(stamp(o._placed)) + '</dd><dt>Type</dt><dd>' + esc(TYPE[o.type] || o.type) + '</dd><dt>Customer</dt><dd>' + esc(d.name) + ' · <a href="tel:' + esc(d.phone) + '">' + esc(d.phone) + '</a></dd>' +
           (o.type === 'delivery' ? '<dt>Address</dt><dd>' + esc(d.address) + '</dd>' : '<dt>Pickup</dt><dd>' + (d.time === 'asap' ? 'As soon as possible' : 'Today ' + esc(fmtTime(d.time))) + '</dd>') +
           '<dt>Items</dt><dd>' + (o.lines || []).map(function (l) { return esc(l.qty + ' × ' + l.name); }).join('<br>') + '</dd>' + (d.notes ? '<dt>Notes</dt><dd>' + esc(d.notes) + '</dd>' : '') +
-          '<dt>Total</dt><dd><b>' + money(t.total) + '</b> (sub ' + money(t.sub) + ', GST ' + money(t.gst) + (t.del ? ', delivery ' + money(t.del) : '') + ')</dd>' + (e.value ? '<dt>Promised</dt><dd>' + esc(e.title + ' ' + e.value) + '</dd>' : '') + '</dl>' +
-          '<div class="row" style="margin:8px 0 0"><button class="btn btn-gold btn-sm fit" data-act="print" data-kind="order" data-doc="' + esc(o._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button>' : '') + '</div></div>';
+          (o._status === 'accepted' ? countdownRow(o) : '') + '<dt>Total</dt><dd><b>' + money(t.total) + '</b> (sub ' + money(t.sub) + ', GST ' + money(t.gst) + (t.del ? ', delivery ' + money(t.del) : '') + ')</dd>' + (e.value ? '<dt>Promised</dt><dd>' + esc(e.title + ' ' + e.value) + '</dd>' : '') + '</dl>' +
+          '<div class="row" style="margin:8px 0 0">' + (o._status === 'new' ? '<button class="btn btn-gold btn-sm fit" data-act="accept" data-doc="' + esc(o._doc) + '">✔ Accept order</button>' : '') + '<button class="btn ' + (o._status === 'new' ? 'btn-ghost' : 'btn-gold') + ' btn-sm fit" data-act="print" data-kind="order" data-doc="' + esc(o._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="orders" data-doc="' + esc(o._doc) + '">Delete</button>' : '') + '</div></div>';
       }).join('') || '<p class="mute">No orders to show.</p>');
   };
   var WDN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -342,7 +342,7 @@
     var hr = function (w, label) { return '<div class="row"><div><label>' + label + ' — opens</label><select data-m="hrs" data-w="' + w + '" data-f="open">' + timeOpts(T.hours[w].open) + '</select></div><div><label>closes</label><select data-m="hrs" data-w="' + w + '" data-f="close">' + timeOpts(T.hours[w].close) + '</select></div></div>'; };
     return '<h2>Restaurant settings</h2><div class="ed"><h3 style="margin-top:0">Contact</h3><div class="row">' + f('phone', 'Phone') + f('email', 'Email', 'email') + '</div><div class="row">' + f('address', 'Address') + '</div></div>' +
       '<div class="ed"><h3 style="margin-top:0">Opening hours</h3>' + hr('week', T.hours.week.label) + hr('wknd', T.hours.wknd.label) + '<p class="mute" style="margin:0">Booking and pickup time slots follow these hours (the last slot is 30 minutes before closing).</p></div>' +
-      '<div class="ed"><h3 style="margin-top:0">Charges and limits</h3><div class="row">' + f('gstPercent', 'GST (%)', 'number', 'min="0" max="40" step="0.5"') + f('deliveryFee', 'Delivery fee (Rs)', 'number', 'min="0"') + f('vvipCharge', 'VVIP hall extra charge (Rs)', 'number', 'min="0"') + f('maxDeliveryMinutes', 'Maximum delivery time (minutes)', 'number', 'min="15" max="180"') + '</div></div>' + bookingHtml(T);
+      '<div class="ed"><h3 style="margin-top:0">Charges and limits</h3><div class="row">' + f('gstPercent', 'GST (%)', 'number', 'min="0" max="40" step="0.5"') + f('deliveryFee', 'Delivery fee (Rs)', 'number', 'min="0"') + f('vvipCharge', 'VVIP hall extra charge (Rs)', 'number', 'min="0"') + f('maxDeliveryMinutes', 'Maximum delivery time (minutes)', 'number', 'min="15" max="180"') + '</div><div class="row">' + f('autoPrepareMinutes', 'Accepted orders move to Preparing after (minutes, 0 = never)', 'number', 'min="0" max="120"') + '</div><p class="mute" style="margin:0">Press “Accept order” on a new order. After this many minutes it moves to Preparing by itself while the admin page is open on any screen.</p></div>' + bookingHtml(T);
   };
   function bookingHtml(T) {
     var B = T.booking = T.booking || {}, n = function (k, label, extra) { return '<div><label>' + label + '</label><input data-m="bk" data-f="' + k + '" type="number" ' + extra + ' value="' + esc(B[k]) + '"></div>'; };
@@ -417,7 +417,7 @@
       else t[f] = v;
       mark('cel');
     } else if (m === 'set') {
-      var T = S.docs.set, num = ['gstPercent', 'deliveryFee', 'vvipCharge', 'maxDeliveryMinutes'].indexOf(f) >= 0; T[f] = num ? numv(v) : v; mark('set');
+      var T = S.docs.set, num = ['gstPercent', 'deliveryFee', 'vvipCharge', 'maxDeliveryMinutes', 'autoPrepareMinutes'].indexOf(f) >= 0; T[f] = num ? numv(v) : v; mark('set');
     } else if (m === 'bk') { var Bk = (S.docs.set.booking = S.docs.set.booking || {}); Bk[f] = Math.max(0, parseInt(v, 10) || 0); mark('set'); }
     else if (m === 'bkwd') { var Bw = (S.docs.set.booking = S.docs.set.booking || {}), d0 = +el.getAttribute('data-d'), arr0 = (Bw.closedWeekdays || []).filter(function (x) { return x !== d0; }); if (v) arr0.push(d0); Bw.closedWeekdays = arr0.sort(); mark('set'); }
     else if (m === 'hrs') { S.docs.set.hours[el.getAttribute('data-w')][f] = +v; mark('set'); }
@@ -433,10 +433,42 @@
       else if (rr && cap && slotLoad(rr) > cap && !confirm('This time slot already has ' + slotLoad(rr) + ' guests booked (capacity ' + cap + '). Confirm anyway?')) { draw(); return; }
     }
     el.disabled = true;
-    FS.update((kind === 'order' ? 'orders/' : 'reservations/') + id, { status: val }).then(function () {
-      list.forEach(function (o) { if (o._doc === id) o._status = val; }); toast('Status updated to ' + LBL[val]); drawTabs(); var y = window.scrollY; draw(); window.scrollTo(0, y);
+    setStatus(kind, id, val).then(function () {
+      toast('Status updated to ' + LBL[val]); drawTabs(); var y = window.scrollY; draw(); window.scrollTo(0, y);
     }, function (e) { toast(errMsg(e), true); draw(); });
   }
+  /* sets the status (with a time stamp for orders) and updates the local copy */
+  function setStatus(kind, id, val) {
+    var list = kind === 'order' ? S.orders : S.res, path = (kind === 'order' ? 'orders/' : 'reservations/') + id, at = new Date().toISOString();
+    var p = kind === 'order' ? FS.update(path, { status: val, statusAt: at }).catch(function (e) { if (e && e.status === 403) return FS.update(path, { status: val }); throw e; }) : FS.update(path, { status: val });
+    return p.then(function () { list.forEach(function (o) { if (o._doc === id) { o._status = val; o._statusAt = kind === 'order' ? at : o._statusAt; } }); });
+  }
+  /* accepted orders move to Preparing by themselves after N minutes (runs while any admin page is open) */
+  var accSeen = {}, advBusy = {}, advFail = {};
+  function accAt(o) { var t = Date.parse(o._statusAt); if (isNaN(t)) { accSeen[o._doc] = accSeen[o._doc] || Date.now(); t = accSeen[o._doc]; } return t; }
+  function autoMins() { var m = +((S.docs.set || {}).autoPrepareMinutes); return isNaN(m) ? 5 : m; }
+  function countdownRow(o) { var m = autoMins(); if (!m) return '<dt>Next</dt><dd>Accepted. Move it to Preparing when the kitchen starts.</dd>'; return '<dt>Next</dt><dd>Accepted. Moves to Preparing in <b class="cd" data-due="' + (accAt(o) + m * 60000) + '">…</b></dd>'; }
+  function autoAdvance() {
+    var m = autoMins(), now = Date.now(), moved = false;
+    if (!S.loaded || !m) return;
+    S.orders.forEach(function (o) {
+      if (o._status !== 'accepted' || advBusy[o._doc] || (advFail[o._doc] && now - advFail[o._doc] < 30000)) return;
+      if (now - accAt(o) < m * 60000) return;
+      advBusy[o._doc] = true;
+      setStatus('order', o._doc, 'preparing').then(function () { moved = true; }, function () { advFail[o._doc] = Date.now(); }).then(function () {
+        delete advBusy[o._doc];
+        if (moved) { moved = false; drawTabs(); if (S.tab === 'orders' || S.tab === 'dash') { var y = window.scrollY; draw(); window.scrollTo(0, y); } toast('Order ' + o.id + ' moved to Preparing'); }
+      });
+    });
+  }
+  function tickCountdown() {
+    var now = Date.now();
+    Array.prototype.forEach.call(document.querySelectorAll('.cd[data-due]'), function (el) {
+      var left = Math.max(0, Math.ceil((+el.getAttribute('data-due') - now) / 1000)); el.textContent = Math.floor(left / 60) + ':' + pad(left % 60);
+    });
+    autoAdvance();
+  }
+  setInterval(tickCountdown, 1000);
   function roundTo(n, step) { return Math.round(n / step) * step; }
   function bulkApply() {
     var B = S.bulk, f = 1 + (+B.pct || 0) / 100, step = +B.round || 1, M = S.docs.menu, n = 0;
@@ -475,6 +507,7 @@
         var Bb = (S.docs.set.booking = S.docs.set.booking || {}); Bb.blockedSlots = (Bb.blockedSlots || []).concat([{ date: bd, from: bf, to: bt }]); mark('set'); draw(); break;
       case 'rmblock': var Bx = S.docs.set.booking, rd = el.getAttribute('data-date'), rf = +el.getAttribute('data-from'), rt = +el.getAttribute('data-to'); Bx.blockedSlots = (Bx.blockedSlots || []).filter(function (x) { return !(x.date === rd && +x.from === rf && +x.to === rt); }); mark('set'); draw(); break;
       case 'print': printSlip(el.getAttribute('data-kind'), el.getAttribute('data-doc')); break;
+      case 'accept': el.disabled = true; setStatus('order', el.getAttribute('data-doc'), 'accepted').then(function () { toast('Order accepted'); drawTabs(); var y = window.scrollY; draw(); window.scrollTo(0, y); alerts(); }, function (err) { toast(errMsg(err), true); el.disabled = false; }); break;
       case 'refresh': refresh(false); break;
       case 'xlsx': exportXlsx(); break;
       case 'bkdl': el.disabled = true; el.textContent = 'Preparing…';

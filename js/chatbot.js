@@ -182,7 +182,7 @@
     all.sort(function (a, b) { return String(a.placedAt) < String(b.placedAt) ? -1 : 1; });
     return all[all.length - 1] || null;
   }
-  var ST_RU = { 'Received': 'Mausool ho gaya', 'Being prepared': 'Tayyar ho raha hai', 'Ready': 'Tayyar hai', 'Completed': 'Mukammal', 'Cancelled': 'Cancel', 'Awaiting confirmation': 'Confirmation ka intezar', 'Confirmed': 'Confirm ho gayi', 'Could not be accommodated': 'Maafi, jagah nahi mil saki' };
+  var ST_RU = { 'Received': 'Mausool ho gaya', 'Accepted': 'Qabool ho gaya', 'Being prepared': 'Tayyar ho raha hai', 'Ready': 'Tayyar hai', 'Completed': 'Mukammal', 'Cancelled': 'Cancel', 'Awaiting confirmation': 'Confirmation ka intezar', 'Confirmed': 'Confirm ho gayi', 'Could not be accommodated': 'Maafi, jagah nahi mil saki' };
   function statusReply(q) {
     var rec = lastRecord(q);
     if (!rec) return r(L('I could not find a booking or order made on this device. If you have a reference like <b>RV-…</b> or <b>RW-…</b>, please call <b>' + PHONE + '</b>.', 'Is device par koi booking ya order nahi mila. Agar aap ke paas <b>RV-…</b> ya <b>RW-…</b> reference hai to barae meherbani <b>' + PHONE + '</b> par call karein.'), ['Contact details']);

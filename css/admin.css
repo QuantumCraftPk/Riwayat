@@ -124,3 +124,6 @@
 .alertbar .btn-gold{background:#1a1006;color:#f0d28a;border-color:#1a1006}
 @keyframes alpulse{50%{background:#f0cf7a}}
 @media (prefers-reduced-motion:reduce){.alertbar{animation:none}}
+
+.pill.accepted{border-color:#6aa5d6;color:#b4d4f1}
+.cd{color:#b4d4f1;font-variant-numeric:tabular-nums}

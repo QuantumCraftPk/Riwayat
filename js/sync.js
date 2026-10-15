@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var STATUS_TEXT = {
-    order: { 'new': 'Received', preparing: 'Being prepared', ready: 'Ready', completed: 'Completed', cancelled: 'Cancelled' },
+    order: { 'new': 'Received', accepted: 'Accepted', preparing: 'Being prepared', ready: 'Ready', completed: 'Completed', cancelled: 'Cancelled' },
     reservation: { 'new': 'Awaiting confirmation', confirmed: 'Confirmed', declined: 'Could not be accommodated' }
   };
   function token() { // unguessable document id: only the customer who placed it can look it up
