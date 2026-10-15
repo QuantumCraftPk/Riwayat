@@ -206,6 +206,34 @@
     O = null; F = { step: 'date', d: { kids: [] } }; lastOffer = '';
     return r(L('Happy to book a table for you. Which <b>date</b>? You can say “tomorrow”, “Friday” or “25 Oct”. (Type “cancel” any time to stop.)', 'Zaroor, main aap ke liye table book kar deta hoon. Kis <b>tareekh</b> ke liye? Aap “kal”, “Friday” ya “25 Oct” likh sakte hain. (Rokne ke liye kisi bhi waqt “cancel” likhein.)'), ['Today', 'Tomorrow']);
   }
+  /* Start the booking and pre-fill whatever the first message already says (date, time, adults, kids and their ages). */
+  function startFlowFrom(q) {
+    var res = startFlow(), s = String(q || '').toLowerCase(), got = [], m, ages = [], nk = null, total = null, ad = null;
+    try {
+      if (parseDate(s)) { res = flowReply(s); if (F && F.d.date) got.push(fmtD(F.d.date)); }
+      if (F && F.step === 'time') {
+        m = s.match(/(\d{1,2}(?:[:.]\d{2})?)\s*(a\.?m\.?|p\.?m\.?|baje)/);
+        if (m) { res = flowReply(m[1] + (m[2] === 'baje' ? '' : ' ' + m[2]) + ' ' + (/raat|shaam|sham|evening|night/.test(s) ? 'raat' : '')); if (F && F.d.time != null) got.push(fmtT(F.d.time)); }
+      }
+      if (F && F.step === 'adults') {
+        var hasKidWord = /\b(kids?|child|children|bacha|bachay|bachon|bache)\b/.test(s), re = /(\d{1,2})\s*(?:years?|yrs?|yr|saal|sal)\b/g;
+        if (hasKidWord) while ((m = re.exec(s))) if (+m[1] <= 12) ages.push(+m[1]);
+        ad = (s.match(/(\d{1,2})\s*(?:adults?|bade|balig)\b/) || [])[1];
+        total = (s.match(/(\d{1,2})\s*(?:log|login|people|persons?|guests?|members?|afraad|mehman|bandy|bande)\b/) || s.match(/\bfor\s+(\d{1,2})\b(?!\s*(?:am|pm|:|oct|nov|dec))/) || [])[1];
+        nk = (s.match(/(\d{1,2})\s*(?:kids?|child|children|bachay|bachon|bache)\b/) || [])[1];
+        var kc = ages.length || (nk != null ? +nk : (/\b(no kids|koi bacha nahi|koi bachay nahi)\b/.test(s) ? 0 : null));
+        var a = ad != null ? +ad : (total != null && kc != null ? +total - kc : (total != null && !hasKidWord ? +total : null));
+        if (a && a > 0) { res = flowReply(String(a)); if (F && F.d.adults) got.push(F.d.adults + L(F.d.adults === 1 ? ' adult' : ' adults', ' bade')); }
+        if (F && F.step === 'kids' && kc != null) {
+          res = flowReply(kc ? String(kc) : 'none');
+          if (F && F.step === 'ages' && ages.length === kc) res = flowReply(ages.join(' '));
+          if (F && (F.step === 'cuisine' || F.step === 'ages' || F.step === 'seating')) got.push(kc ? kc + L(kc === 1 ? ' kid' : ' kids', ' bachay') + (F.d.kids && F.d.kids.length ? ' (' + F.d.kids.join(', ') + ')' : '') : L('no kids', 'koi bacha nahi'));
+        }
+      }
+    } catch (e) { /* fall back to whatever step we reached */ }
+    if (got.length && res) res = r(L('Got it: ', 'Theek hai: ') + '<b>' + got.map(esc).join(' · ') + '</b>.<br>' + res.html, res.chips);
+    return res;
+  }
   function timeChips(sl) { var out = [], pref = [780, 1140, 1200, 1260]; pref.forEach(function (m) { if (sl.indexOf(m) >= 0) out.push(fmtT(m)); }); if (!out.length) sl.slice(0, 4).forEach(function (m) { out.push(fmtT(m)); }); return out; }
   function parseTime(q, sl) {
     var m = q.toLowerCase().match(/(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/); if (!m) return null;
@@ -502,11 +530,11 @@
     { t: /birthday|engagement|celebrat|decor|themes?\b|\b(party|parties|events?)\b(?! of)|mangni|salgirah/i, f: function (q) {
         var P = window.RIWAYAT_PARTIES, names = function (k) { return P && P[k] ? P[k].themes.map(function (t) { return esc(t.name); }).join(', ') : ''; };
         return r(L('We host <b>Birthday Parties</b> and <b>Engagement Ceremonies</b> with <b>free décor</b> — choose from <b>4 themes</b> each.', 'Hum <b>Birthday Parties</b> aur <b>Engagement</b> ki taqreebaat <b>muft decor</b> ke saath karte hain — har ek ke <b>4 themes</b> hain.') + (P ? '<ul><li><b>Birthday:</b> ' + names('birthday') + '</li><li><b>Engagement:</b> ' + names('engagement') + '</li></ul>' : '<br>') + L('Minimum guests vary by theme. Call <b>' + PHONE + '</b> or email <b>' + EMAIL + '</b> to plan yours. ', 'Kam az kam mehmanon ki tadaad theme ke mutabiq hai. Plan karne ke liye <b>' + PHONE + '</b> par call karein ya <b>' + EMAIL + '</b> par email karein. ') + link(onOrderPage ? 'index.html#celebrations' : '#celebrations', L('See the themes →', 'Themes dekhein →')), ['Birthday themes', 'Engagement themes', 'Contact details']); } },
-    { t: /seat|sitting|table type|indoor|terrace|lawn|roof|vvip|private|outdoor|bethna|baithne|baithna|jagah/i, f: function () { return r(L('You can choose where to sit when you book:<ul><li><b>VVIP Hall</b> — private, exclusive dining (<i>' + money(VVIP) + ' additional</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — open-air arched terrace</li><li><b>Lawn</b> — courtyard lawn with fountains</li><li><b>Roof Top</b> — city views and lantern light</li></ul>', 'Booking ke waqt aap baithne ki jagah chun sakte hain:<ul><li><b>VVIP Hall</b> — private dining (<i>' + money(VVIP) + ' izafi</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — khuli mehraabi terrace</li><li><b>Lawn</b> — fawwaron wala lawn</li><li><b>Roof Top</b> — shehr ka nazara aur lanterns</li></ul>') + ACT.book, ['Book a table', 'Opening hours']); } },
-    { t: /kid|child|children|bachch|bachay|bachon|baby|toddler/i, f: function () { var k = M.buffets.filter(function (b) { return b.kidsNote.length; }); return r(L('When booking a table you tell us how many <b>adults</b> and <b>kids</b> are coming and each child’s age (up to 12 years).', 'Table book karte waqt aap batate hain ke kitne <b>bade</b> aur kitne <b>bachay</b> aa rahe hain aur har bachay ki umar (12 saal tak).') + (k.length ? '<br><br>' + L('Buffet kids pricing:', 'Buffet mein bachon ki qeemat:') + '<ul>' + k.map(function (b) { return '<li><b>' + esc(b.name) + '</b>: ' + esc(b.kidsNote.join(' ')) + '</li>'; }).join('') + '</ul>' : '') + ACT.book, ['Book a table', 'Buffet prices']); } },
     { t: /book|reserv|table for|dine[- ]?in|booking|ٹیبل|table chahiye|table chahye|jagah chahiye/i, f: function (q) {
         if (/\bhow\b|process|steps|kaise|policy|rules?\b|limit|advance|notice|information|info\b/i.test(q)) return r(L('Table requests are checked by our team, so each one is <b>awaiting confirmation</b> until we confirm it.<ul><li>Bookable up to <b>' + ADV + ' days</b> ahead</li><li>Online parties up to <b>' + MAXP + ' guests</b> (call <b>' + PHONE + '</b> for larger groups)</li>' + (+BK.minNoticeMinutes > 30 ? '<li>At least <b>' + BK.minNoticeMinutes + ' minutes</b> notice</li>' : '') + '</ul>I can take your booking right here, or you can use the full page: ', 'Table requests hamari team check karti hai, is liye har request confirm hone tak <b>confirmation ka intezar</b> mein rehti hai.<ul><li><b>' + ADV + ' din</b> aage tak booking ho sakti hai</li><li>Online booking <b>' + MAXP + ' mehmanon</b> tak (bare groups ke liye <b>' + PHONE + '</b> par call karein)</li>' + (+BK.minNoticeMinutes > 30 ? '<li>Kam az kam <b>' + BK.minNoticeMinutes + ' minute</b> pehle batana hoga</li>' : '') + '</ul>Main yahin booking le sakta hoon, ya aap poora page istemal kar sakte hain: ') + ACT.book, ['Book a table', 'Seating options']);
-        return startFlow(); } },
+        return startFlowFrom(q); } },
+    { t: /seat|sitting|table type|indoor|terrace|lawn|roof|vvip|private|outdoor|bethna|baithne|baithna|jagah/i, f: function () { return r(L('You can choose where to sit when you book:<ul><li><b>VVIP Hall</b> — private, exclusive dining (<i>' + money(VVIP) + ' additional</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — open-air arched terrace</li><li><b>Lawn</b> — courtyard lawn with fountains</li><li><b>Roof Top</b> — city views and lantern light</li></ul>', 'Booking ke waqt aap baithne ki jagah chun sakte hain:<ul><li><b>VVIP Hall</b> — private dining (<i>' + money(VVIP) + ' izafi</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — khuli mehraabi terrace</li><li><b>Lawn</b> — fawwaron wala lawn</li><li><b>Roof Top</b> — shehr ka nazara aur lanterns</li></ul>') + ACT.book, ['Book a table', 'Opening hours']); } },
+    { t: /kid|child|children|bachch|bachay|bachon|baby|toddler/i, f: function () { var k = M.buffets.filter(function (b) { return b.kidsNote.length; }); return r(L('When booking a table you tell us how many <b>adults</b> and <b>kids</b> are coming and each child’s age (up to 12 years).', 'Table book karte waqt aap batate hain ke kitne <b>bade</b> aur kitne <b>bachay</b> aa rahe hain aur har bachay ki umar (12 saal tak).') + (k.length ? '<br><br>' + L('Buffet kids pricing:', 'Buffet mein bachon ki qeemat:') + '<ul>' + k.map(function (b) { return '<li><b>' + esc(b.name) + '</b>: ' + esc(b.kidsNote.join(' ')) + '</li>'; }).join('') + '</ul>' : '') + ACT.book, ['Book a table', 'Buffet prices']); } },
     { t: /weather|rain|raining|hot today|cold today|temperature|garmi|sardi|barish|بارش|موسم/i, f: function () { return r(L('I cannot check the weather, but Riwayat has a seat for every mood: <b>Indoor</b> seating, <b>Terrace</b>, <b>Lawn</b> and <b>Roof Top</b> for open-air evenings, and the <b>VVIP Hall</b> for private dining.', 'Main mausam check nahi kar sakta, lekin Riwayat mein har mizaaj ke liye jagah hai: <b>Indoor</b>, khuli shaamon ke liye <b>Terrace</b>, <b>Lawn</b> aur <b>Roof Top</b>, aur private dining ke liye <b>VVIP Hall</b>.'), ['Seating options', 'Opening hours', 'Book a table']); } },
     { t: /recommend|suggest|popular|signature|best (dish|food|item)|must.?try|special(ty|ity)?\b|what should (i|we) (eat|order|try|have)|kya (khayen|khayein|order|try)|kuch acha|confused what/i, f: function () {
       var pick = ['Chicken Karahi', 'Mutton Chops, 6 pcs', 'Chicken Biryani', 'Garlic Naan', 'Kunafa Nabulsia', 'Family Feast Gold'].map(function (n) { return INDEX.filter(function (i) { return i.name === n; })[0]; }).filter(Boolean);
