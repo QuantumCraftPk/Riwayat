@@ -37,7 +37,7 @@
     'Show cart': 'Cart dikhayein', 'Clear cart': 'Cart khali karein', 'View menu': 'Menu dekhein',
     'Check my order status': 'Order ka status', 'Check my booking status': 'Booking ka status', 'None': 'Koi nahi',
     'Other buffets': 'Doosre buffets', 'GST & delivery fee': 'GST aur delivery fee', 'Back': 'Wapis',
-    'Birthday themes': 'Birthday themes', 'Engagement themes': 'Engagement themes', 'Buffets': 'Buffets'
+    'Something else': 'Aur kuch chahiye', 'That is all': 'Bas, shukriya', 'Start a new chat': 'Nayi chat shuru karein', 'Birthday themes': 'Birthday themes', 'Engagement themes': 'Engagement themes', 'Buffets': 'Buffets'
   };
   var CHIP_REV = {}; Object.keys(CHIP_RU).forEach(function (k) { CHIP_REV[CHIP_RU[k].toLowerCase()] = k; });
   function canon(t) { return CHIP_REV[t.trim().toLowerCase()] || t; }
@@ -247,7 +247,7 @@
   var CUI_RU = { 'Not decided yet': 'Abhi tay nahi' };
   function summary(d) {
     var n = d.adults + d.kids.length, c = CUISINES.filter(function (x) { return x[0] === d.cuisine; })[0], s = SEATS.filter(function (x) { return x[0] === d.seating; })[0];
-    return '<ul><li><b>' + fmtD(d.date) + '</b> ' + L('at', 'ko') + ' <b>' + fmtT(d.time) + '</b></li><li>' + n + L(n === 1 ? ' guest' : ' guests', ' mehman') + ' (' + d.adults + L(' adults', ' balig') + (d.kids.length ? ', ' + d.kids.length + L(' kids aged ', ' bachay, umar ') + d.kids.map(function (a) { return a === 0 ? L('under 1', '1 saal se kam') : a; }).join(', ') : '') + ')</li><li>' + (LANG === 'ru' && CUI_RU[c[1]] ? CUI_RU[c[1]] : c[1]) + ' · ' + s[1] + (d.seating === 'vvip' ? ' (' + money(VVIP) + L(' additional', ' izafi') + ')' : '') + '</li><li>' + esc(d.name) + ' · ' + esc(d.phone) + '</li></ul>';
+    return '<ul><li><b>' + fmtD(d.date) + '</b> ' + L('at', 'ko') + ' <b>' + fmtT(d.time) + '</b></li><li>' + n + L(n === 1 ? ' guest' : ' guests', ' mehman') + ' (' + d.adults + L(' adults', ' balig') + (d.kids.length ? ', ' + d.kids.length + L(d.kids.length === 1 ? ' kid aged ' : ' kids aged ', ' bachay, umar ') + d.kids.map(function (a) { return a === 0 ? L('under 1', '1 saal se kam') : a; }).join(', ') : '') + ')</li><li>' + (LANG === 'ru' && CUI_RU[c[1]] ? CUI_RU[c[1]] : c[1]) + ' · ' + s[1] + (d.seating === 'vvip' ? ' (' + money(VVIP) + L(' additional', ' izafi') + ')' : '') + '</li><li>' + esc(d.name) + ' · ' + esc(d.phone) + '</li></ul>';
   }
   function cuisineQ(pre) { return r((pre || '') + L('What kind of <b>cuisine</b> would you like?', 'Aap kis qisam ka <b>khana</b> pasand karenge?'), CUISINES.map(function (z) { return z[1]; })); }
   function flowReply(q) {
@@ -617,7 +617,14 @@
     text = text.trim(); if (!text) return;
     if (!CHIP_REV[text.toLowerCase()]) { var dl = detectLang(text); if (dl) LANG = dl; }
     var shown = text; text = canon(text);
+    clearIdle();
+    if (ended) { if (text === 'Start a new chat') { resetSession(); return; } resetSession(); }
     add('user', shown, false); setChips([]);
+    if (closing) {
+      closing = false;
+      if (text === 'That is all' || /^(that.?s all|that is all|no|nope|nahi|nahin|nothing|nothing else|bas|bas itna|finished|done|no thanks|no thank you|nahi shukriya)\b/i.test(text)) { setTimeout(endSession, 400); return; }
+      if (text === 'Something else' || /^(yes|yeah|yep|haan|han|ji|jee|something else|i need something else|aur kuch)\b/i.test(text)) { setTimeout(function () { add('bot', L('Of course! What would you like to do?', 'Bilkul! Aap kya karna chahenge?'), true); setChips(CHIPS_MAIN); }, 400); return; }
+    }
     var typing = add('bot typing', '<span></span><span></span><span></span>', true);
     setTimeout(function () {
       typing.remove();
@@ -627,10 +634,80 @@
   }
   function open() {
     panel.hidden = false; fab.setAttribute('aria-expanded', 'true'); root.classList.add('open');
-    if (!started) { started = true; var g = reply('hello'); add('bot', g.html + '<br><small>You can write in English or Roman Urdu · Aap English ya Roman Urdu mein likh sakte hain.</small>', true); setChips(g.chips); }
+    if (!started) greet();
+    if (closing) startIdle();
     setTimeout(function () { input.focus(); }, 50);
   }
-  function close() { panel.hidden = true; fab.setAttribute('aria-expanded', 'false'); root.classList.remove('open'); fab.focus(); }
+  function greet() { started = true; var g = reply('hello'); add('bot', g.html + '<br><small>You can write in English or Roman Urdu · Aap English ya Roman Urdu mein likh sakte hain.</small>', true); setChips(g.chips); }
+  function close() { clearIdle(); panel.hidden = true; fab.setAttribute('aria-expanded', 'false'); root.classList.remove('open'); fab.focus(); }
+  input.addEventListener('input', function () { if (closing) startIdle(); });
+
+  /* ---------- polite session end ---------- */
+  var closing = false, ended = false, idleT = null, IDLE_MS = 25000;
+  function clearIdle() { if (idleT) { clearTimeout(idleT); idleT = null; } }
+  function startIdle() { clearIdle(); if (!closing || panel.hidden) return; idleT = setTimeout(function () { if (closing) endSession(); }, IDLE_MS); }
+  function endSession() {
+    clearIdle(); closing = false; ended = true;
+    add('bot', L('Thank you, <b>Allah Hafiz</b>. 🤍<br>We look forward to welcoming you at <b>Riwayat</b>.', 'Shukriya, <b>Allah Hafiz</b>. 🤍<br>Hum <b>Riwayat</b> mein aap ka intezar karenge.'), true);
+    setChips(['Start a new chat']);
+  }
+  function resetSession() { clearIdle(); log.innerHTML = ''; F = null; O = null; ended = false; closing = false; lastOffer = ''; greet(); }
+  function beginClosing() {
+    setTimeout(function () {
+      add('bot', L('Thank you for choosing <b>Riwayat</b>. 🌙<br>Is there anything else I can help you with, or are you finished?', 'Riwayat chunne ka shukriya. 🌙<br>Kya main aap ki kuch aur madad kar sakta hoon, ya bas itna hi?'), true);
+      setChips(['Something else', 'That is all']); closing = true; startIdle();
+    }, 1400);
+  }
+
+  /* ---------- live updates: booking / order status arrives in the chat by itself ---------- */
+  var SEEN_KEY = 'riwayat_chat_seen', FINAL = { order: ['completed', 'cancelled'], reservation: ['confirmed', 'declined'] }, polling = false;
+  function seenMap() { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch (e) { return {}; } }
+  function saveSeen(m) { try { localStorage.setItem(SEEN_KEY, JSON.stringify(m)); } catch (e) { /* ignore */ } }
+  function myRecords() {
+    var out = [], now = Date.now();
+    [['riwayat_reservations', 'reservation'], ['riwayat_orders', 'order']].forEach(function (p) {
+      var a = []; try { a = JSON.parse(localStorage.getItem(p[0]) || '[]'); } catch (e) { /* ignore */ }
+      a.forEach(function (x) { if (x && x.token && x.id && now - (+new Date(x.placedAt) || 0) < 864e5) out.push({ kind: p[1], rec: x }); });
+    });
+    return out.slice(-6);
+  }
+  function whenText(rec) {
+    var d = /^\d{4}-\d{2}-\d{2}$/.test(String(rec.date || '')) ? fmtD(rec.date) : '', t = typeof rec.time === 'number' ? fmtT(rec.time) : (rec.time ? esc(String(rec.time)) : '');
+    return d ? '<b>' + d + (t ? L(' at ', ' ko ') + t : '') + '</b>' : '';
+  }
+  function announce(kind, rec, st) {
+    var id = '<b>' + esc(rec.id) + '</b>', msg = '', fin = false, g = +rec.guests || 0, w = whenText(rec);
+    if (kind === 'reservation') {
+      if (st === 'confirmed') { fin = true; msg = L('✅ <b>Your table is confirmed!</b><br>Booking ' + id + (w ? ' for ' + w : '') + (g ? ', ' + g + (g === 1 ? ' guest' : ' guests') : '') + '. We look forward to welcoming you.', '✅ <b>Aap ki table confirm ho gayi!</b><br>Booking ' + id + (w ? ': ' + w : '') + (g ? ', ' + g + ' mehman' : '') + '. Hum aap ka intezar karenge.'); }
+      else if (st === 'declined') { fin = true; msg = L('We are sorry, we could not accommodate booking ' + id + (w ? ' for ' + w : '') + '. Please call <b>' + PHONE + '</b> or book another time.', 'Maaf kijiye, hum booking ' + id + (w ? ' (' + w + ')' : '') + ' mein jagah nahi de sake. Barae meherbani <b>' + PHONE + '</b> par call karein ya koi aur waqt chunein.'); }
+    } else {
+      var pick = rec.type === 'pickup';
+      if (st === 'accepted') msg = L('👍 Your order ' + id + ' has been <b>accepted</b>. The kitchen will start on it shortly.', '👍 Aap ka order ' + id + ' <b>qabool</b> ho gaya hai. Kitchen jaldi shuru karega.');
+      else if (st === 'preparing') msg = L('👨‍🍳 Your order ' + id + ' is now <b>being prepared</b>.', '👨‍🍳 Aap ka order ' + id + ' ab <b>tayyar ho raha</b> hai.');
+      else if (st === 'ready') msg = L('🛍️ Your order ' + id + ' is <b>ready</b>' + (pick ? ' for pickup.' : ' and will be on its way shortly.'), '🛍️ Aap ka order ' + id + ' <b>tayyar</b> hai' + (pick ? ', pickup ke liye.' : ' aur jaldi rawana hoga.'));
+      else if (st === 'completed') { fin = true; msg = L('✅ Your order ' + id + ' is <b>complete</b>. We hope you enjoy your meal!', '✅ Aap ka order ' + id + ' <b>mukammal</b> ho gaya. Hum umeed karte hain aap ko khana pasand aayega!'); }
+      else if (st === 'cancelled') { fin = true; msg = L('We are sorry, order ' + id + ' has been <b>cancelled</b>. Please call <b>' + PHONE + '</b> if you have any questions.', 'Maaf kijiye, order ' + id + ' <b>cancel</b> ho gaya hai. Koi sawal ho to <b>' + PHONE + '</b> par call karein.'); }
+    }
+    if (!msg) return;
+    if (!started) greet();
+    ended = false; clearIdle(); closing = false;
+    add('bot', msg, true);
+    if (panel.hidden) fab.classList.add('has-new');
+    if (fin) beginClosing(); else setChips(CHIPS_MAIN);
+  }
+  function pollStatus() {
+    if (polling || document.hidden || !window.RiwayatSync || !RiwayatSync.available()) return;
+    var seen = seenMap(), list = myRecords().filter(function (x) { return FINAL[x.kind].indexOf(seen[x.rec.token] || 'new') < 0; });
+    if (!list.length) return;
+    polling = true;
+    Promise.all(list.map(function (x) { return RiwayatSync.status(x.kind, x.rec.token).then(function (st) { return { x: x, st: st }; }, function () { return null; }); })).then(function (rs) {
+      polling = false; var m = seenMap();
+      rs.forEach(function (o) { if (!o || !o.st) return; var t = o.x.rec.token; if (o.st !== (m[t] || 'new')) { m[t] = o.st; saveSeen(m); announce(o.x.kind, o.x.rec, o.st); } });
+    }, function () { polling = false; });
+  }
+  setInterval(pollStatus, 10000); setTimeout(pollStatus, 2500);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pollStatus(); });
+
   fab.addEventListener('click', function () { fab.classList.remove('has-new'); panel.hidden ? open() : close(); });
   document.getElementById('chatX').addEventListener('click', close);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) close(); });

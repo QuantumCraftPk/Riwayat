@@ -164,7 +164,7 @@
         var ages = (r.kids || []).map(function (a) { return String(a) === '0' ? 'under 1' : a; });
         return '<div class="rec"><div class="rec-h"><span><b>' + esc(r.id) + '</b> <span class="pill ' + r._status + '">' + LBL[r._status] + '</span></span><span>' + statusSel('reservation', r, RST) + '</span></div><dl>' +
           '<dt>Placed</dt><dd>' + esc(stamp(r._placed)) + '</dd><dt>Guest</dt><dd>' + esc(r.name || '(not given)') + (r.phone ? ' · <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a>' : '') + '</dd>' +
-          '<dt>When</dt><dd>' + esc(r.date) + ' at ' + esc(fmtTime(r.time)) + '</dd><dt>Guests</dt><dd>' + (r.guests || (r.adults + (r.kids || []).length)) + ' (' + r.adults + ' adults' + ((r.kids || []).length ? ', ' + r.kids.length + ' kids, ages ' + esc(ages.join(', ')) : '') + ')</dd>' +
+          '<dt>When</dt><dd>' + esc(r.date) + ' at ' + esc(fmtTime(r.time)) + '</dd><dt>Guests</dt><dd>' + (r.guests || (r.adults + (r.kids || []).length)) + ' (' + r.adults + (+r.adults === 1 ? ' adult' : ' adults') + ((r.kids || []).length ? ', ' + r.kids.length + (r.kids.length === 1 ? ' kid' : ' kids') + ', ages ' + esc(ages.join(', ')) : '') + ')</dd>' +
           '<dt>Cuisine</dt><dd>' + esc(CUISINE[r.cuisine] || r.cuisine) + '</dd><dt>Seating</dt><dd>' + esc(SEAT[r.seating] || r.seating) + '</dd>' + capHtml(r) + '</dl>' +
           '<div class="row" style="margin:8px 0 0"><button class="btn btn-gold btn-sm fit" data-act="print" data-kind="reservation" data-doc="' + esc(r._doc) + '">🖨 Print slip</button>' + (isAdminRole() ? '<button class="btn btn-ghost btn-sm fit" data-del="reservations" data-doc="' + esc(r._doc) + '">Delete</button>' : '') + '</div></div>';
       }).join('') || '<p class="mute">No reservations to show.</p>');
@@ -185,7 +185,7 @@
     }
     var ages = (o.kids || []).map(function (a) { return String(a) === '0' ? 'under 1' : a; });
     return head + '<div class="sl-big">' + esc(o.date) + ' · ' + esc(fmtTime(o.time)) + '</div>' + row('Booking', o.id) + row('Guest', o.name) + row('Phone', o.phone) + line +
-      row('Guests', (o.guests || (o.adults + (o.kids || []).length)) + ' (' + o.adults + ' adults' + ((o.kids || []).length ? ', ' + o.kids.length + ' kids: ' + ages.join(', ') : '') + ')') + row('Seating', SEAT[o.seating] || o.seating) + row('Cuisine', CUISINE[o.cuisine] || o.cuisine) + row('Status', LBL[o._status]) + foot;
+      row('Guests', (o.guests || (o.adults + (o.kids || []).length)) + ' (' + o.adults + (+o.adults === 1 ? ' adult' : ' adults') + ((o.kids || []).length ? ', ' + o.kids.length + (o.kids.length === 1 ? ' kid: ' : ' kids: ') + ages.join(', ') : '') + ')') + row('Seating', SEAT[o.seating] || o.seating) + row('Cuisine', CUISINE[o.cuisine] || o.cuisine) + row('Status', LBL[o._status]) + foot;
   }
   function printSlip(kind, id) {
     var o = (kind === 'order' ? S.orders : S.res).filter(function (x) { return x._doc === id; })[0]; if (!o) return;
