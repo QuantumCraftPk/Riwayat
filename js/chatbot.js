@@ -69,12 +69,199 @@
   }
   function cat(id) { return M.categories.filter(function (c) { return c.id === id; })[0]; }
 
+  /* ---------- live booking rules, dates and typo help ---------- */
+  var BK = ST.booking || {}, MAXP = +BK.maxParty || 20, ADV = +BK.advanceDays || 60, lastHits = [], lastOffer = '';
+  var WDN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  function ymd(d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+  function pYmd(s) { var a = s.split('-'); return new Date(+a[0], +a[1] - 1, +a[2]); }
+  function fmtT(m) { m = +m; var h = Math.floor(m / 60) % 24, mi = m % 60; return ((h + 11) % 12 + 1) + ':' + p2(mi) + ' ' + (h >= 12 ? 'pm' : 'am'); }
+  function fmtD(s) { var d = pYmd(s); return WDN[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()].replace(/^./, function (c) { return c.toUpperCase(); }) + ' ' + d.getFullYear(); }
+  function closedReason(ds) {
+    var wd = pYmd(ds).getDay();
+    if ((BK.closedWeekdays || []).indexOf(wd) >= 0) return 'we are not taking bookings on ' + WDN[wd] + 's';
+    var hit = (BK.closedDates || []).filter(function (x) { return x.date === ds; })[0];
+    return hit ? 'we are not taking bookings on that date' + (hit.note ? ' (' + hit.note + ')' : '') : '';
+  }
+  function hoursFor(ds) { var wd = pYmd(ds).getDay(); return wd === 0 || wd === 6 ? ST.hours.wknd : ST.hours.week; }
+  function slotsFor(ds) {
+    var out = [], now = new Date(), isToday = ds === ymd(now), nowMin = now.getHours() * 60 + now.getMinutes() + Math.max(30, +BK.minNoticeMinutes || 0);
+    if (closedReason(ds)) return out;
+    var h = hoursFor(ds), blocked = (BK.blockedSlots || []).filter(function (b) { return b.date === ds; });
+    for (var m = +h.open; m <= +h.close - 30; m += 30) if ((!isToday || m >= nowMin) && !blocked.some(function (b) { return m >= +b.from && m < +b.to; })) out.push(m);
+    return out;
+  }
+  function parseDate(q) {
+    var s = q.toLowerCase(), now = new Date(), d = null, m, i;
+    now.setHours(0, 0, 0, 0);
+    var add = function (n) { var x = new Date(now); x.setDate(x.getDate() + n); return x; };
+    if (/day after tomorrow|parso/.test(s)) d = add(2);
+    else if (/\btomorrow\b|\bkal\b/.test(s)) d = add(1);
+    else if (/\btoday\b|\baaj\b|\btonight\b/.test(s)) d = add(0);
+    else if ((m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/))) d = new Date(+m[1], +m[2] - 1, +m[3]);
+    else if ((m = s.match(/(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*/)) || (m = s.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(\d{1,2})(?:st|nd|rd|th)?\b/))) {
+      var dd = isNaN(+m[1]) ? +m[2] : +m[1], mo = MON.indexOf(isNaN(+m[1]) ? m[1] : m[2]);
+      d = new Date(now.getFullYear(), mo, dd); if (d < now) d = new Date(now.getFullYear() + 1, mo, dd);
+    } else if ((m = s.match(/\b(\d{1,2})[\/.](\d{1,2})\b/)) && +m[1] <= 31 && +m[2] <= 12) {
+      d = new Date(now.getFullYear(), +m[2] - 1, +m[1]); if (d < now) d = new Date(now.getFullYear() + 1, +m[2] - 1, +m[1]);
+    } else {
+      var names = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      for (i = 0; i < 7; i++) if (new RegExp('\\b' + names[i] + '(' + WDN[i].slice(3).toLowerCase() + ')?s?\\b|\\b' + names[i] + '\\b').test(s) && !(i === 6 && /\bsat(isfied|e)\b/.test(s))) { d = add((i - now.getDay() + 7) % 7); break; }
+    }
+    return d && !isNaN(d) ? ymd(d) : null;
+  }
+  function openOn(ds) {
+    var d = ymd(new Date());
+    if (ds < d) return r('That date has already passed.', ['Opening hours']);
+    var h = hoursFor(ds), cr = closedReason(ds);
+    if (cr) return r('Sorry, ' + cr + '. Please pick another day.', ['Book a table', 'Opening hours']);
+    return r('On <b>' + fmtD(ds) + '</b> we are open <b>' + fmtT(h.open) + ' to ' + fmtT(h.close) + '</b>.', ['Book a table', 'Buffet prices']);
+  }
+  function closuresNote() {
+    var t = ymd(new Date()), parts = [];
+    if ((BK.closedWeekdays || []).length) parts.push('closed on ' + BK.closedWeekdays.map(function (i) { return WDN[i] + 's'; }).join(', '));
+    (BK.closedDates || []).filter(function (x) { return x.date >= t; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 5).forEach(function (x) { parts.push(fmtD(x.date) + (x.note ? ' (' + x.note + ')' : '')); });
+    return parts.length ? '<br><b>Please note:</b> ' + parts.map(esc).join('; ') + '.' : '';
+  }
+
+  /* typo help: used only when nothing else matched */
+  var KEYS = 'hours timings opening closing location address directions parking booking reservation reserve table tables delivery takeaway buffet buffets dessert desserts birthday engagement vegetarian recommend recommendation price prices seating terrace rooftop lawn indoor children breakfast brunch contact phone whatsapp restaurant celebration'.split(' '), VOCAB = {};
+  INDEX.forEach(function (it) { (it.name + ' ' + it.desc).toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).forEach(function (w) { if (w.length >= 4) VOCAB[w] = 1; }); });
+  KEYS.forEach(function (k) { VOCAB[k] = 1; });
+  function lev(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    var prev = [], cur, i, j; for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) { cur = [i]; for (j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+    return prev[b.length];
+  }
+  function fixWord(w) {
+    if (w.length < 5 || VOCAB[w]) return w;
+    var lim = w.length >= 8 ? 2 : 1, best = null, bd = 9, tie = false;
+    for (var k in VOCAB) { var d = lev(w, k, lim); if (d > lim) continue; if (d < bd) { bd = d; best = k; tie = false; } else if (d === bd) tie = true; }
+    return best && !tie ? best : w;
+  }
+  function fixTypos(q) { return q.toLowerCase().replace(/[a-z]+/g, fixWord); }
+
+  /* ---------- order / booking status ---------- */
+  function lastRecord(q) {
+    var id = (q.match(/R[WV]-\d{6}-\d{4}/i) || [''])[0].toUpperCase(), all = [];
+    ['riwayat_reservations', 'riwayat_orders'].forEach(function (k) { try { all = all.concat(JSON.parse(localStorage.getItem(k) || '[]')); } catch (e) { /* ignore */ } });
+    all = all.filter(function (x) { return x && x.token; });
+    if (id) return all.filter(function (x) { return x.id === id; })[0] || null;
+    var wantOrder = /order/i.test(q), wantRes = /book|reserv|table/i.test(q);
+    all = all.filter(function (x) { var isRes = /^RV-/.test(x.id); return wantOrder && !wantRes ? !isRes : wantRes && !wantOrder ? isRes : true; });
+    all.sort(function (a, b) { return String(a.placedAt) < String(b.placedAt) ? -1 : 1; });
+    return all[all.length - 1] || null;
+  }
+  function statusReply(q) {
+    var rec = lastRecord(q);
+    if (!rec) return r('I could not find a booking or order made on this device. If you have a reference like <b>RV-…</b> or <b>RW-…</b>, please call <b>' + PHONE + '</b>.', ['Contact details']);
+    if (!window.RiwayatSync || !RiwayatSync.available()) return r('I cannot check the status right now. Please call <b>' + PHONE + '</b>.', ['Contact details']);
+    var kind = /^RV-/.test(rec.id) ? 'reservation' : 'order';
+    return RiwayatSync.status(kind, rec.token).then(function (st) {
+      return r('<b>' + esc(rec.id) + '</b> (' + (kind === 'order' ? 'takeaway order' : 'table booking') + '): <b>' + esc(st ? RiwayatSync.statusText(kind, st) : 'not found') + '</b>.', ['Opening hours', 'Contact details']);
+    }, function () { return r('I could not reach the restaurant just now. Please try again in a moment or call <b>' + PHONE + '</b>.', ['Contact details']); });
+  }
+
+  /* ---------- booking inside the chat ---------- */
+  var F = null, CUISINES = [['desi', 'Desi', /desi|pakistani|bbq/], ['arabic', 'Arabic', /arab/], ['continental', 'Continental', /conti|western|italian/], ['chinese', 'Chinese', /chin/], ['buffet', 'Buffet', /buffet/], ['mix', 'Mix', /mix|everything|all/], ['undecided', 'Not decided yet', /not decided|undecided|don.?t know|dont know|any|not sure|decide/]];
+  var SEATS = [['vvip', 'VVIP Hall', /vvip|private/], ['indoor', 'Indoor', /indoor|inside|main|hall|\bac\b/], ['terrace', 'Terrace', /terrace/], ['lawn', 'Lawn', /lawn|garden|courtyard/], ['rooftop', 'Roof Top', /roof/]];
+  var NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+  function numIn(q) { var m = q.match(/\d+/); if (m) return +m[0]; var w = q.toLowerCase().split(/\W+/).filter(function (x) { return NUMW[x]; })[0]; return w ? NUMW[w] : null; }
+  function pick(list, q) { q = q.toLowerCase(); return list.filter(function (x) { return x[2].test(q); })[0] || null; }
+  function startFlow() {
+    F = { step: 'date', d: { kids: [] } }; lastOffer = '';
+    return r('Happy to book a table for you. Which <b>date</b>? You can say “tomorrow”, “Friday” or “25 Oct”. (Type “cancel” any time to stop.)', ['Today', 'Tomorrow']);
+  }
+  function timeChips(sl) { var out = [], pref = [780, 1140, 1200, 1260]; pref.forEach(function (m) { if (sl.indexOf(m) >= 0) out.push(fmtT(m)); }); if (!out.length) sl.slice(0, 4).forEach(function (m) { out.push(fmtT(m)); }); return out; }
+  function parseTime(q, sl) {
+    var m = q.toLowerCase().match(/(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/); if (!m) return null;
+    var h = +m[1], mi = +(m[2] || 0), suf = m[3] ? m[3][0] : '', cands = [];
+    if (h > 24 || mi > 59) return null;
+    if (suf === 'p') cands.push(h % 12 + 12); else if (suf === 'a') cands.push(h % 12); else if (h >= 13) cands.push(h); else cands.push(h % 12 + 12, h % 12);
+    for (var i = 0; i < cands.length; i++) { var t = cands[i] * 60 + mi; if (sl.indexOf(t) >= 0) return t; }
+    return null;
+  }
+  function summary(d) {
+    var n = d.adults + d.kids.length, c = CUISINES.filter(function (x) { return x[0] === d.cuisine; })[0], s = SEATS.filter(function (x) { return x[0] === d.seating; })[0];
+    return '<ul><li><b>' + fmtD(d.date) + '</b> at <b>' + fmtT(d.time) + '</b></li><li>' + n + (n === 1 ? ' guest' : ' guests') + ' (' + d.adults + ' adults' + (d.kids.length ? ', ' + d.kids.length + ' kids aged ' + d.kids.map(function (a) { return a === 0 ? 'under 1' : a; }).join(', ') : '') + ')</li><li>' + c[1] + ' · ' + s[1] + (d.seating === 'vvip' ? ' (' + money(VVIP) + ' additional)' : '') + '</li><li>' + esc(d.name) + ' · ' + esc(d.phone) + '</li></ul>';
+  }
+  function flowReply(q) {
+    var d = F.d, t = q.trim(), x, n;
+    if (/\bcancel\b|\bstop\b|never ?mind|rehne do|chor do|\bquit\b/i.test(t)) { F = null; return r('No problem, I have cancelled the booking. Anything else I can help with?', CHIPS_MAIN); }
+    switch (F.step) {
+      case 'date':
+        x = parseDate(t); if (!x) return r('Sorry, I did not get the date. Try “tomorrow”, “Friday” or “25 Oct”.', ['Today', 'Tomorrow']);
+        var last = new Date(); last.setDate(last.getDate() + ADV);
+        if (x < ymd(new Date())) return r('That date has already passed. Which day would you like?', ['Today', 'Tomorrow']);
+        if (x > ymd(last)) return r('We take bookings up to ' + ADV + ' days ahead. Please pick an earlier date.', ['Today', 'Tomorrow']);
+        if (closedReason(x)) return r('Sorry, ' + closedReason(x) + '. Please pick another day.', ['Today', 'Tomorrow']);
+        F.sl = slotsFor(x); if (!F.sl.length) return r('There are no table times left on ' + fmtD(x) + '. Please pick another day.', ['Tomorrow']);
+        d.date = x; F.step = 'time';
+        return r('<b>' + fmtD(x) + '</b>. We seat guests from <b>' + fmtT(F.sl[0]) + '</b> to <b>' + fmtT(F.sl[F.sl.length - 1]) + '</b>. What time would you like? (e.g. 8 pm)', timeChips(F.sl));
+      case 'time':
+        x = parseTime(t, F.sl);
+        if (x == null) return r('I could not match that to a table time. Times run every 30 minutes from ' + fmtT(F.sl[0]) + ' to ' + fmtT(F.sl[F.sl.length - 1]) + ' (for example 8:00 pm or 8:30 pm).', timeChips(F.sl));
+        d.time = x; F.step = 'adults'; return r('How many <b>adults</b> will be dining? (Online bookings up to ' + MAXP + ' guests.)', ['2', '4', '6']);
+      case 'adults':
+        n = numIn(t); if (!n || n < 1) return r('Please tell me the number of adults, for example 4.', ['2', '4', '6']);
+        if (n > MAXP) return r('Online bookings are limited to ' + MAXP + ' guests. For larger groups please call <b>' + PHONE + '</b>.', ['2', '4', '6']);
+        d.adults = n; F.step = 'kids'; return r('Any <b>kids</b> (up to 12 years)? Say “none” or a number.', ['No kids', '1', '2', '3']);
+      case 'kids':
+        n = /^(no|none|nil|nahi|nahin|koi nahi|zero)/i.test(t) ? 0 : numIn(t);
+        if (n == null) return r('Please say “none” or the number of kids.', ['No kids', '1', '2', '3']);
+        if (d.adults + n > MAXP) return r('That makes more than ' + MAXP + ' guests. For larger groups please call <b>' + PHONE + '</b>, or give me a smaller number of kids.', ['No kids', '1', '2']);
+        if (n > 10) return r('Please call <b>' + PHONE + '</b> for that many children.', ['No kids']);
+        if (!n) { d.kids = []; F.step = 'cuisine'; return cuisineQ(); }
+        F.nk = n; F.step = 'ages'; return r('Please tell me the age of ' + (n === 1 ? 'the child' : 'each of the ' + n + ' children') + ', for example “4” or “4 and 7”. Use 0 for under 1.');
+      case 'ages':
+        var nums = t.toLowerCase().replace(/under\s*1|infant|baby/g, '0').match(/\d+/g) || [];
+        if (nums.length !== F.nk || nums.some(function (a) { return +a > 12; })) return r('I need exactly ' + F.nk + (F.nk === 1 ? ' age' : ' ages') + ', each from 0 to 12 (for example “4 and 7”).');
+        d.kids = nums.map(Number); F.step = 'cuisine'; return cuisineQ();
+      case 'cuisine':
+        x = pick(CUISINES, t); if (!x) return cuisineQ('Sorry, I did not catch that. ');
+        d.cuisine = x[0]; F.step = 'seating'; return r('Where would you like to sit?<ul><li><b>VVIP Hall</b> — private (' + money(VVIP) + ' additional)</li><li><b>Indoor</b>, <b>Terrace</b>, <b>Lawn</b> or <b>Roof Top</b></li></ul>', SEATS.map(function (z) { return z[1]; }));
+      case 'seating':
+        x = pick(SEATS, t); if (!x) return r('Please choose one: VVIP Hall, Indoor, Terrace, Lawn or Roof Top.', SEATS.map(function (z) { return z[1]; }));
+        d.seating = x[0]; F.step = 'name'; return r('Almost done. What <b>name</b> should the booking be under?');
+      case 'name':
+        x = t.replace(/^(my name is|i am|i'm|mera naam|name is)\s+/i, '').trim();
+        if (x.length < 2 || x.length > 60 || /\d{4}/.test(x)) return r('Please type your name, for example “Sara Khan”.');
+        d.name = x; F.step = 'phone'; return r('Thank you, ' + esc(x) + '. What is your <b>mobile number</b>, so we can confirm the table? (e.g. 0300 1234567)');
+      case 'phone':
+        if (!/^(\+?92|0)3\d{9}$/.test(t.replace(/[\s-]/g, ''))) return r('That does not look like a Pakistani mobile number. Please type it like 0300 1234567.');
+        d.phone = t.replace(/[\s-]/g, ''); F.step = 'confirm';
+        return r('Please check your booking request:' + summary(d) + 'Shall I send it to the restaurant?', ['Yes, confirm', 'Cancel']);
+      case 'confirm':
+        if (/^(yes|confirm|ok|okay|haan|han|ji|yep|sure|done|send)/i.test(t)) return submitFlow();
+        if (/^(no|nahi|nahin)/i.test(t)) { F = null; return r('Okay, I have not sent anything. Anything else I can help with?', CHIPS_MAIN); }
+        return r('Please press “Yes, confirm” to send your request, or “Cancel”.', ['Yes, confirm', 'Cancel']);
+    }
+    F = null; return null;
+  }
+  function cuisineQ(pre) { return r((pre || '') + 'What kind of <b>cuisine</b> would you like?', CUISINES.map(function (z) { return z[1]; })); }
+  function submitFlow() {
+    var d = F.d;
+    if (!window.RiwayatSync || !RiwayatSync.available()) { F = null; return r('Sorry, I cannot send bookings from here right now. Please use the booking page: ' + ACT.book, ['Contact details']); }
+    var rec = { kind: 'reservation', type: 'reservation', name: d.name, phone: d.phone, date: d.date, time: d.time, adults: d.adults, kids: d.kids.slice(), guests: d.adults + d.kids.length, cuisine: d.cuisine, seating: d.seating };
+    rec.id = 'RV-' + ymd(new Date()).replace(/-/g, '').slice(2) + '-' + Math.floor(1000 + Math.random() * 9000); rec.placedAt = new Date().toISOString();
+    return RiwayatSync.submit('reservation', rec).then(function (tok) {
+      rec.token = tok; rec.status = 'new'; F = null;
+      try { var all = JSON.parse(localStorage.getItem('riwayat_reservations') || '[]'); all.push(rec); localStorage.setItem('riwayat_reservations', JSON.stringify(all)); } catch (e) { /* ignore */ }
+      return r('Your table request has been sent. Reference: <b>' + esc(rec.id) + '</b>.<br>Status: <b>Awaiting confirmation</b>. The team will confirm it, and you can ask me “check my booking status” any time.', ['Check my booking status', 'Opening hours']);
+    }, function () { return r('I could not reach the restaurant just now, so nothing was sent. Please press “Yes, confirm” to try again.', ['Yes, confirm', 'Cancel']); });
+  }
+
   var RULES = [
+    { t: /sold ?out|finished today|khatam|not available today|unavailable/i, f: function () { var so = INDEX.filter(function (i) { return i.soldOut; }); return r(so.length ? 'Currently <b>sold out</b>:<ul>' + so.map(function (i) { return '<li>' + esc(i.name) + '</li>'; }).join('') + '</ul>Everything else on the menu is available.' : 'Nothing is marked sold out right now.', ['View menu']); } },
+    { t: /status|track|where is my|check my (order|booking|reservation|table)|RW-\d|RV-\d/i, f: function (q) { return statusReply(q); } },
+    { t: /^(and |what about |also )?(the )?(price|cost|rate|kitna|kitne ka|qeemat|how much)( of (it|that|them))?\??$/i, f: function () { return lastHits.length ? r('<ul>' + lastHits.map(itemLine).join('') + '</ul>', ['Takeaway & delivery']) : null; } },
+    { t: /^(yes|yeah|yep|haan|han|ji|ji haan|ok|okay|sure|please)\b/i, f: function () { return lastOffer === 'book' ? startFlow() : null; } },
     { t: /^(hi|hello|hey|salam|assalam|aoa|good (morning|evening|afternoon))(?![-\w])|السلام/i, f: function () { return r('Assalam-o-Alaikum! Welcome to <b>Riwayat</b>. I can help with the menu, buffets, table bookings and takeaway orders. What would you like to know?', CHIPS_MAIN); } },
     { t: /thank|shukriya|jazak|شکریہ/i, f: function () { return r('You are most welcome! Anything else I can help with?', ['Opening hours', 'Book a table']); } },
     { t: /^(bye|goodbye|allah hafiz|khuda hafiz)/i, f: function () { return r('Allah Hafiz! We look forward to welcoming you at Riwayat.'); } },
     { t: /\bhelp\b|what can you do/i, f: function () { return r('I can answer questions about <b>opening hours</b>, <b>location</b>, <b>menu items and prices</b>, <b>buffets</b>, <b>seating</b>, <b>kids</b>, <b>table booking</b> and <b>takeaway / delivery</b>. Try “price of chicken karahi”.', CHIPS_MAIN); } },
-    { t: /hour|open|clos|timing|what time|kitne baje|khul|وقت|کھل/i, f: function () { return r('We are open:<br>• ' + HOURS.week + '<br>• ' + HOURS.wknd + '<br><br>Buffet timings:<ul>' + M.buffets.map(function (b) { return '<li><b>' + esc(b.name) + '</b> (' + esc(b.days.toLowerCase()) + '): ' + b.times.map(esc).join(' and ') + '</li>'; }).join('') + '</ul>', ['Book a table', 'Buffet prices']); } },
+    { t: /hour|open|clos|timing|what time|kitne baje|khul|وقت|کھل/i, f: function (q) { var dq = /buffet|brunch|tea\b|dinner|lunch/i.test(q) ? null : parseDate(q); if (dq) return openOn(dq); return r('We are open:<br>• ' + HOURS.week + '<br>• ' + HOURS.wknd + '<br><br>Buffet timings:<ul>' + M.buffets.map(function (b) { return '<li><b>' + esc(b.name) + '</b> (' + esc(b.days.toLowerCase()) + '): ' + b.times.map(esc).join(' and ') + '</li>'; }).join('') + '</ul>' + closuresNote(), ['Book a table', 'Buffet prices']); } },
     { t: /where|location|address|direction|map|find you|kahan|کہاں|پتہ|road/i, f: function () { return r('We are on <b>' + ADDRESS + '</b>, Pakistan. See the exterior in our ' + link(galleryHref, 'gallery') + '.', ['Opening hours', 'Contact details']); } },
     { t: /phone|call|contact|number|email|whatsapp|reach|رابطہ/i, f: function () { return r('You can reach us at <b>' + PHONE + '</b> or <b>' + EMAIL + '</b>.', ['Book a table']); } },
     { t: /./, f: function (q) { return themeReply(q); } },
@@ -83,7 +270,9 @@
         return r('We host <b>Birthday Parties</b> and <b>Engagement Ceremonies</b> with <b>free décor</b> — choose from <b>4 themes</b> each.' + (P ? '<ul><li><b>Birthday:</b> ' + names('birthday') + '</li><li><b>Engagement:</b> ' + names('engagement') + '</li></ul>' : '<br>') + 'Minimum guests vary by theme. Call <b>' + PHONE + '</b> or email <b>' + EMAIL + '</b> to plan yours. ' + link(onOrderPage ? 'index.html#celebrations' : '#celebrations', 'See the themes →'), ['Birthday themes', 'Engagement themes', 'Contact details']); } },
     { t: /seat|sitting|table type|indoor|terrace|lawn|roof|vvip|private|outdoor|bethna/i, f: function () { return r('You can choose where to sit when you book:<ul><li><b>VVIP Hall</b> — private, exclusive dining (<i>' + money(VVIP) + ' additional</i>)</li><li><b>Indoor</b> — main dining hall</li><li><b>Terrace</b> — open-air arched terrace</li><li><b>Lawn</b> — courtyard lawn with fountains</li><li><b>Roof Top</b> — city views and lantern light</li></ul>' + ACT.book, ['Book a table', 'Opening hours']); } },
     { t: /kid|child|children|bachch|baby|toddler/i, f: function () { var k = M.buffets.filter(function (b) { return b.kidsNote.length; }); return r('When booking a table you tell us how many <b>adults</b> and <b>kids</b> are coming and each child’s age (up to 12 years).' + (k.length ? '<br><br>Buffet kids pricing:<ul>' + k.map(function (b) { return '<li><b>' + esc(b.name) + '</b>: ' + esc(b.kidsNote.join(' ')) + '</li>'; }).join('') + '</ul>' : '') + ACT.book, ['Book a table', 'Buffet prices']); } },
-    { t: /book|reserv|table for|dine[- ]?in|booking|ٹیبل/i, f: function () { return r('Booking a table takes a minute:<ol><li>Choose <b>Dine In</b></li><li>Pick the <b>date and time</b></li><li>Enter <b>adults</b>, and <b>kids with their ages</b></li><li>Choose a <b>cuisine</b> (or Mix / Not decided yet)</li><li>Choose your <b>seating</b> and confirm</li></ol>' + ACT.book, ['Seating options', 'Opening hours']); } },
+    { t: /book|reserv|table for|dine[- ]?in|booking|ٹیبل|table chahiye|table chahye/i, f: function (q) {
+        if (/\bhow\b|process|steps|kaise|policy|rules?\b|limit|advance|notice|information|info\b/i.test(q)) return r('Table requests are checked by our team, so each one is <b>awaiting confirmation</b> until we confirm it.<ul><li>Bookable up to <b>' + ADV + ' days</b> ahead</li><li>Online parties up to <b>' + MAXP + ' guests</b> (call <b>' + PHONE + '</b> for larger groups)</li>' + (+BK.minNoticeMinutes > 30 ? '<li>At least <b>' + BK.minNoticeMinutes + ' minutes</b> notice</li>' : '') + '</ul>I can take your booking right here, or you can use the full page: ' + ACT.book, ['Book a table', 'Seating options']);
+        return startFlow(); } },
     { t: /weather|rain|raining|hot today|cold today|temperature|garmi|sardi|barish|بارش|موسم/i, f: function () { return r('I cannot check the weather, but Riwayat has a seat for every mood: <b>Indoor</b> seating, <b>Terrace</b>, <b>Lawn</b> and <b>Roof Top</b> for open-air evenings, and the <b>VVIP Hall</b> for private dining. Choose your seating when you ' + ACT.book, ['Seating options', 'Opening hours', 'Book a table']); } },
     { t: /recommend|suggest|popular|signature|best (dish|food|item)|must.?try|special(ty|ity)?\b|what should (i|we) (eat|order|try|have)|kya (khayen|order)|confused what/i, f: function () {
       var pick = ['Chicken Karahi', 'Mutton Chops, 6 pcs', 'Chicken Biryani', 'Garlic Naan', 'Kunafa Nabulsia', 'Family Feast Gold'].map(function (n) { return INDEX.filter(function (i) { return i.name === n; })[0]; }).filter(Boolean);
@@ -93,12 +282,12 @@
       return hits.length ? r('Some vegetarian-friendly dishes:<ul>' + hits.map(itemLine).join('') + '</ul>For allergies, spice level or special diets please call <b>' + PHONE + '</b> so the kitchen can confirm.', ['Contact details']) :
         r('For <b>allergies, spice level, ingredients or special diets</b> I do not want to guess, as the kitchen has the final word. Please call <b>' + PHONE + '</b> or email <b>' + EMAIL + '</b> and the team will confirm for you.', ['Contact details', 'View menu']); } },
     { t: /parking|valet|wifi|wi-?fi|dress ?code|prayer|namaz|smok|wheelchair|accessib|live music|music|ac\b|air.?condition|toilet|washroom|high ?chair/i, f: function () { return r('I do not have confirmed details on that yet. Please call <b>' + PHONE + '</b> or email <b>' + EMAIL + '</b> and the team will happily help.', ['Contact details', 'Opening hours']); } },
-    { t: /who are you|your name|are you (a )?(bot|human|real|ai)|what can you do/i, f: function () { return r('I am the <b>Riwayat Assistant</b>, a demo chatbot for this concept website. I can help with the <b>menu and prices</b>, <b>buffets</b>, <b>hours</b>, <b>seating</b>, <b>celebration themes</b>, <b>table bookings</b> and <b>takeaway</b>.', CHIPS_MAIN); } },
+    { t: /who are you|your name|are you (a )?(bot|human|real|ai)|what can you do/i, f: function () { return r('I am the <b>Riwayat Assistant</b>. I can help with the <b>menu and prices</b>, <b>buffets</b>, <b>hours</b>, <b>seating</b>, <b>celebration themes</b>, <b>table bookings</b> and <b>takeaway</b>.', CHIPS_MAIN); } },
     { t: /how are you|kya haal|kaise ho|what'?s up|sup\b/i, f: function () { return r('Doing well, thank you, and ready to talk food! Would you like a recommendation, the buffet prices, or to book a table?', ['What should I try?', 'Buffet prices', 'Book a table']); } },
     { t: /joke|funny|mazahiya|لطیفہ/i, f: function () { return r('Why did the biryani get invited to every party? Because it always brings the whole <i>dum</i> crowd together. 😄 Now, shall I suggest something tasty?', ['What should I try?', 'Buffet prices']); } },
     { t: /gst|tax|delivery (fee|charge)|charges|service charge/i, f: function () { return r('Menu prices <b>exclude GST</b>. At the bill we add <b>' + GST + '% GST</b>, plus a <b>' + money(DELIVERY) + '</b> delivery fee for delivery orders.', ['Takeaway & delivery']); } },
-    { t: /deliver|takeaway|take away|pick ?up|order|parcel|home delivery/i, f: function () { return r('You can order for <b>pickup</b> or <b>delivery</b>:<ol><li>Choose <b>Takeaway</b>, then Pickup or Delivery</li><li>Add dishes to your cart</li><li>Review the bill (' + GST + '% GST' + ('; delivery fee ' + money(DELIVERY)) + ')</li><li>Enter your details and press <b>Confirm Order</b></li></ol>This is a demo — no real payment is taken. ' + ACT.take, ['GST & delivery fee', 'View menu']); } },
-    { t: /pay|card|cash|jazzcash|easypaisa|checkout/i, f: function () { return r('This website is a <b>conceptual demo</b>, so no real payment is taken and no order is sent to a kitchen. You can still go through the whole flow to see how it would work.', ['Takeaway & delivery', 'Book a table']); } },
+    { t: /deliver|takeaway|take away|pick ?up|order|parcel|home delivery/i, f: function () { return r('You can order for <b>pickup</b> or <b>delivery</b>:<ol><li>Choose <b>Takeaway</b>, then Pickup or Delivery</li><li>Add dishes to your cart</li><li>Review the bill (' + GST + '% GST' + ('; delivery fee ' + money(DELIVERY)) + ')</li><li>Enter your details and press <b>Confirm Order</b></li></ol>Your order goes straight to the restaurant when you press Confirm. No online payment is taken on the website. ' + ACT.take, ['GST & delivery fee', 'View menu']); } },
+    { t: /pay|card|cash|jazzcash|easypaisa|checkout/i, f: function () { return r('No online payment is taken on this website. Please call <b>' + PHONE + '</b> to ask about payment methods.', ['Takeaway & delivery', 'Book a table']); } },
     { t: /pdf|download|printable/i, f: function () { return r('Use the <b>Download Menu (PDF)</b> button on the ' + link(menuHref, 'Menu page') + ' to save or print the full menu.'); } },
     { t: /gallery|photo|picture|image|pics/i, f: function () { return r('Take a look at our ' + link(galleryHref, 'photo gallery') + ' — the main dining hall, courtyard, rooftop, live kitchens and more.'); } },
     { t: /buffet|dinner|hi-?tea|brunch|breakfast|eat as much/i, f: function (q) { return buffetReply(q); } },
@@ -114,11 +303,14 @@
     { t: /\bmenu\b|what do you (have|serve)|categories|dishes|serve|cuisine/i, f: function () { return r('Our menu has <b>' + INDEX.length + ' dishes</b> across: ' + M.categories.map(function (c) { return esc(c.name); }).join(', ') + ' — plus <b>4 buffets</b>.<br>' + link(menuHref, 'Open the menu →') + '<br>Ask me about any dish or price!', ['Buffet prices', 'Desi dishes', 'Desserts', 'Takeaway & delivery']); } }
   ];
 
-  function reply(q) {
+  function reply(q, noFix) {
+    if (F) return flowReply(q);
     for (var i = 0; i < RULES.length; i++) {
       if (RULES[i].t.test(q)) { var out = RULES[i].f(q); if (out) return out; }
     }
     var hits = searchItems(q);
+    if (hits.length) lastHits = hits.slice(0, 3);
+    else if (!noFix) { var fq = fixTypos(q); if (fq !== q.toLowerCase()) return reply(fq, true); }
     if (hits.length) return r('Here is what I found:<ul>' + hits.map(itemLine).join('') + '</ul><small>' + esc(M.taxNote) + '</small>', ['Takeaway & delivery', 'View menu']);
     return r('Sorry, I am not sure about that. I can help with <b>menu & prices</b>, <b>buffets</b>, <b>opening hours</b>, <b>location</b>, <b>seating</b>, <b>booking</b> and <b>takeaway / delivery</b>. For anything else, call <b>' + PHONE + '</b>.', CHIPS_MAIN);
   }
@@ -140,7 +332,7 @@
   var root = document.createElement('div'); root.className = 'chat-root';
   root.innerHTML = '<button class="chat-fab" id="chatFab" aria-label="Open Riwayat Assistant" aria-expanded="false"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg><span class="chat-fab-t">Ask Riwayat</span></button>' +
     '<section class="chat-panel" id="chatPanel" role="dialog" aria-label="Riwayat Assistant" hidden>' +
-    '<header class="chat-head"><div><b>Riwayat Assistant</b><small>روایت · Demo assistant</small></div><button class="chat-x" id="chatX" aria-label="Close chat">×</button></header>' +
+    '<header class="chat-head"><div><b>Riwayat Assistant</b><small>روایت · Online assistant</small></div><button class="chat-x" id="chatX" aria-label="Close chat">×</button></header>' +
     '<div class="chat-log" id="chatLog" role="log" aria-live="polite"></div><div class="chat-chips" id="chatChips"></div>' +
     '<form class="chat-form" id="chatForm" autocomplete="off"><input id="chatIn" type="text" placeholder="Ask about menu, prices, booking…" aria-label="Your message" maxlength="200"><button type="submit" aria-label="Send">➤</button></form></section>';
   document.body.appendChild(root);
@@ -162,8 +354,8 @@
     var typing = add('bot typing', '<span></span><span></span><span></span>', true);
     setTimeout(function () {
       typing.remove();
-      var res = reply(CHIP_MAP[text] || text);
-      add('bot', res.html, true); setChips(res.chips);
+      var res = reply(CHIP_MAP[text] || text), show = function (x) { x = x || r('Sorry, something went wrong. Please call ' + PHONE + '.', CHIPS_MAIN); add('bot', x.html, true); setChips(x.chips); lastOffer = (x.chips || []).indexOf('Book a table') >= 0 ? 'book' : ''; };
+      if (res && typeof res.then === 'function') res.then(show); else show(res);
     }, 450);
   }
   function open() {
