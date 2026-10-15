@@ -389,7 +389,6 @@
   function busy(id, on, label) { var b = $('#' + id); if (!b) return; b.disabled = on; if (label) b.textContent = on ? 'Sending…' : label; }
   function finishDone(o) {
     S.done = o; try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
-    try { window.dispatchEvent(new CustomEvent('riwayat:placed', { detail: o })); } catch (e) { /* ignore */ }
     renderStage(); window.scrollTo(0, 0); var h = $('#stepTitle'); if (h) h.focus({ preventScroll: true }); poll(o);
   }
   function submit(kind, rec, btn, label, ok) {
