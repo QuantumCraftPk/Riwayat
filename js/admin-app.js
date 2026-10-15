@@ -32,7 +32,7 @@
 
   /* ---------- login ---------- */
   function showLogin(msg) {
-    clearInterval(timer); if (window.RiwayatAlerts) window.RiwayatAlerts.reset(); $('#login').hidden = false; $('#app').hidden = true; $('#btnOut').hidden = true; $('#who').textContent = '';
+    clearInterval(timer); if (window.RiwayatAlerts) window.RiwayatAlerts.reset(); S.bk = null; $('#login').hidden = false; $('#app').hidden = true; $('#btnOut').hidden = true; $('#who').textContent = '';
     var e = $('#lErr'); e.hidden = !msg; e.textContent = msg || '';
   }
   function friendly(e) {
@@ -111,7 +111,7 @@
   });
 
   /* ---------- tabs ---------- */
-  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel'], ['staff', 'Staff']];
+  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel'], ['backup', 'Backup'], ['staff', 'Staff']];
   function visibleTabs() { return isAdminRole() ? TABS : TABS.filter(function (t) { return t[0] === 'orders' || t[0] === 'res'; }); }
   function drawTabs() {
     var n1 = S.orders.filter(function (o) { return o._status === 'new'; }).length, n2 = S.res.filter(function (o) { return o._status === 'new'; }).length;
@@ -391,6 +391,7 @@
   function onEdit(e) {
     var el = e.target, m = el.getAttribute('data-m'), f = el.getAttribute('data-f'), v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.getAttribute('data-bulk')) { var bk = el.getAttribute('data-bulk'); S.bulk[bk] = el.type === 'checkbox' ? el.checked : (bk === 'pct' || bk === 'round' ? parseFloat(v) || 0 : v); return; }
+    if (el.getAttribute('data-bkc')) { if (S.bk) S.bk.sel[el.getAttribute('data-bkc')] = el.checked; return; }
     if (el.getAttribute('data-filter')) { S[el.getAttribute('data-filter')] = v; draw(); return; }
     if (el.getAttribute('data-status')) return statusChange(el);
     if (f === 'cat') { S.cat = +v; S.q = ''; draw(); return; }
@@ -476,6 +477,10 @@
       case 'print': printSlip(el.getAttribute('data-kind'), el.getAttribute('data-doc')); break;
       case 'refresh': refresh(false); break;
       case 'xlsx': exportXlsx(); break;
+      case 'bkdl': el.disabled = true; el.textContent = 'Preparing…';
+        bkSnapshot().then(function (b) { var nm = bkDownload(b, 'riwayat-backup'); try { localStorage.setItem(BK_KEY, new Date().toISOString()); } catch (x) {} toast('Backup downloaded: ' + nm + ' (' + b.orders.length + ' orders, ' + b.reservations.length + ' reservations)'); draw(); }, function (err) { toast('Backup failed: ' + errMsg(err), true); el.disabled = false; el.textContent = '⬇ Download backup'; }); break;
+      case 'bkrestore': bkRestore(el); break;
+      case 'bkclear': S.bk = null; draw(); break;
       case 'bulk': bulkApply(); break;
       case 'additem': var g = M.categories[ci].groups[gi]; g.items.push({ id: slug(M.categories[ci].id + '-new-dish') + '-' + Date.now().toString(36), name: 'New dish', desc: '', price: 0 }); mark('menu'); S.q = ''; draw(); break;
       case 'delitem': var it = itemAt(el); if (confirm('Delete “' + it.name + '” from the menu?')) { M.categories[ci].groups[gi].items.splice(+el.getAttribute('data-ii'), 1); mark('menu'); draw(); } break;
@@ -488,6 +493,101 @@
       case 'addth': var k = el.getAttribute('data-k'); P[k].themes.push({ id: 'theme-' + Date.now().toString(36), name: 'New theme', tagline: '', features: [], min: null, img: '' }); mark('cel'); draw(); break;
       case 'delth': var k2 = el.getAttribute('data-k'), ti = +el.getAttribute('data-ti'); if (confirm('Delete the theme “' + P[k2].themes[ti].name + '”?')) { P[k2].themes.splice(ti, 1); mark('cel'); draw(); } break;
     }
+  });
+
+
+  /* ---------- backup & restore (admin only) ---------- */
+  var BKS = [['menu', 'Menu and prices'], ['cel', 'Celebrations'], ['set', 'Settings']], BK_KEY = 'riwayat_last_backup';
+  function bkSnapshot() {
+    return Promise.all([FS.get('site/menu'), FS.get('site/celebrations'), FS.get('site/settings'), FS.getAuth('config/staff'), FS.list('orders', 'placedAt', 5000), FS.list('reservations', 'placedAt', 5000)]).then(function (r) {
+      var site = {}; [r[0], r[1], r[2]].forEach(function (d, i) { site[BKS[i][0]] = d && typeof d.json === 'string' ? d.json : null; });
+      return { app: 'riwayat-backup', version: 1, createdAt: new Date().toISOString(), createdBy: (FS.session() || {}).email || '', site: site,
+        staff: r[3] && Array.isArray(r[3].emails) ? r[3].emails : [], orders: r[4], reservations: r[5] };
+    });
+  }
+  function bkDownload(b, prefix) {
+    var d = new Date(), name = prefix + '-' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+    var blob = new Blob([JSON.stringify(b, null, 1)], { type: 'application/json' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    return name;
+  }
+  function bkParse(text) {
+    var b; try { b = JSON.parse(text); } catch (e) { throw new Error('That file could not be read. Choose a backup file made by this admin panel.'); }
+    if (!b || b.app !== 'riwayat-backup' || b.version !== 1) throw new Error('This is not a Riwayat backup file.');
+    b.site = b.site || {}; b.staff = Array.isArray(b.staff) ? b.staff : []; b.orders = Array.isArray(b.orders) ? b.orders : []; b.reservations = Array.isArray(b.reservations) ? b.reservations : [];
+    var chk = { menu: function (j) { return j && Array.isArray(j.categories); }, cel: function (j) { return j && j.birthday; }, set: function (j) { return j && typeof j === 'object'; } };
+    Object.keys(chk).forEach(function (k) { var v = b.site[k]; if (v != null && !(typeof v === 'string' && chk[k](parse(v)))) throw new Error('The backup is damaged (' + k + ' section). Nothing was changed.'); });
+    if (b.staff.some(function (x) { return typeof x !== 'string'; })) throw new Error('The backup is damaged (staff list). Nothing was changed.');
+    var okRec = function (o, kind) { return o && typeof o._id === 'string' && o._id && o.kind === kind && typeof o.id === 'string' && typeof o.json === 'string' && typeof o.placedAt === 'string'; };
+    if (!b.orders.every(function (o) { return okRec(o, 'order'); }) || !b.reservations.every(function (o) { return okRec(o, 'reservation'); })) throw new Error('The backup is damaged (orders or reservations). Nothing was changed.');
+    return b;
+  }
+  function dishCount(m) { var n = 0; ((m && m.categories) || []).forEach(function (c) { (c.groups || []).forEach(function (g) { n += (g.items || []).length; }); }); return n; }
+  V.backup = function () {
+    if (!isAdminRole()) return '<p class="mute">Only the administrator can use this page.</p>';
+    var last = ''; try { last = localStorage.getItem(BK_KEY) || ''; } catch (e) {}
+    var h = '<h2>Backup and restore</h2><div class="ed"><h3 style="margin-top:0">1. Download a backup</h3><p class="mute">One file with your menu and prices, celebrations, settings, staff list, orders and reservations. Save it somewhere safe (Google Drive, a USB stick). It contains customer names and phone numbers, so keep it private. Make one every week, and before big menu changes.</p>' +
+      '<p><button class="btn btn-gold" data-act="bkdl">⬇ Download backup</button></p><p class="mute">' + (last ? 'Last backup downloaded from this browser: ' + esc(stamp(last)) + '.' : 'No backup has been downloaded from this browser yet.') + '</p></div>';
+    h += '<div class="ed"><h3 style="margin-top:0">2. Restore from a backup</h3><p class="mute">Choose a backup file to see what is inside. Nothing changes until you press Restore. A safety copy of the current data is downloaded first.</p><input id="bkFile" type="file" accept=".json,application/json">';
+    var K = S.bk;
+    if (K) {
+      var b = K.data, row = function (key, text) { return '<label class="chk" style="margin:6px 0"><input type="checkbox" data-bkc="' + key + '"' + (K.sel[key] ? ' checked' : '') + '> ' + text + '</label>'; };
+      h += '<h3>' + esc(K.name) + '</h3><p class="mute">Made ' + esc(stamp(b.createdAt)) + (b.createdBy ? ' by ' + esc(b.createdBy) : '') + '.</p>';
+      if (b.site.menu) h += row('menu', 'Menu and prices (' + dishCount(parse(b.site.menu)) + ' dishes) <span class="mute">replaces the current menu</span>');
+      if (b.site.cel) h += row('cel', 'Celebrations <span class="mute">replaces the current packages</span>');
+      if (b.site.set) h += row('set', 'Settings <span class="mute">replaces the current settings</span>');
+      if (b.staff.length) h += row('staff', 'Staff list (' + b.staff.length + ' email' + (b.staff.length === 1 ? '' : 's') + ') <span class="mute">replaces the current list</span>');
+      if (b.orders.length) h += row('orders', b.orders.length + ' orders <span class="mute">only ones missing now are added; existing orders are not changed</span>');
+      if (b.reservations.length) h += row('res', b.reservations.length + ' reservations <span class="mute">only ones missing now are added; existing ones are not changed</span>');
+      h += '<p><button class="btn btn-gold" data-act="bkrestore">Restore selected</button> <button class="btn btn-ghost" data-act="bkclear">Cancel</button></p>';
+    }
+    return h + '</div>';
+  };
+  function bkRestore(btn) {
+    var K = S.bk; if (!K) return; var b = K.data, sel = K.sel;
+    if (!Object.keys(sel).some(function (k) { return sel[k]; })) { toast('Tick at least one item to restore.', true); return; }
+    if (isDirty()) { toast('You have unsaved changes. Save or discard them first.', true); return; }
+    if (!confirm('Restore the ticked items from this backup?\n\nMenu, celebrations, settings and the staff list will be replaced with the backup versions. A safety copy of the current data will be downloaded first.')) return;
+    btn.disabled = true; var done = [], fails = 0, say = function (t) { btn.textContent = t; };
+    say('Saving a safety copy…');
+    bkSnapshot().then(function (cur) {
+      bkDownload(cur, 'riwayat-before-restore');
+      var have = { orders: {}, res: {} }; cur.orders.forEach(function (o) { have.orders[o._id] = 1; }); cur.reservations.forEach(function (o) { have.res[o._id] = 1; });
+      var steps = [];
+      BKS.forEach(function (x) { if (sel[x[0]] && b.site[x[0]]) steps.push(function () { say('Restoring ' + x[1].toLowerCase() + '…'); return FS.update({ menu: 'site/menu', cel: 'site/celebrations', set: 'site/settings' }[x[0]], { json: b.site[x[0]] }).then(function () { done.push(x[1].toLowerCase()); }); }); });
+      if (sel.staff && b.staff.length) steps.push(function () { say('Restoring staff list…'); return FS.update('config/staff', { emails: b.staff }).then(function () { done.push('staff list'); }); });
+      var addRecs = function (list, coll, label, key) {
+        var missing = list.filter(function (o) { return !have[key][o._id]; }), n = 0;
+        return function () {
+          var i = 0;
+          function next() {
+            if (i >= missing.length) { done.push(n + ' ' + label + ' added' + (list.length - missing.length ? ', ' + (list.length - missing.length) + ' already there' : '')); return Promise.resolve(); }
+            var o = missing[i++], f = { id: o.id, kind: o.kind, status: 'new', placedAt: o.placedAt, total: +o.total || 0, name: o.name || '', phone: o.phone || '', type: o.type || '', json: o.json };
+            say('Restoring ' + label + ' (' + i + ' of ' + missing.length + ')…');
+            return FS.create(coll, o._id, f).then(function () { return o.status && o.status !== 'new' ? FS.update(coll + '/' + o._id, { status: o.status }) : null; }).then(function () { n++; }, function () { fails++; }).then(next);
+          }
+          return next();
+        };
+      };
+      if (sel.orders && b.orders.length) steps.push(addRecs(b.orders, 'orders', 'orders', 'orders'));
+      if (sel.res && b.reservations.length) steps.push(addRecs(b.reservations, 'reservations', 'reservations', 'res'));
+      return steps.reduce(function (p, st) { return p.then(st); }, Promise.resolve());
+    }).then(function () {
+      S.bk = null; return Promise.all([loadSite(), loadRecords()]).then(function () { alerts(); drawTabs(); draw(); toast('Restored: ' + (done.join('; ') || 'nothing') + (fails ? '. ' + fails + ' record(s) could not be added.' : '.'), !!fails); });
+    }, function (e) { toast('Restore stopped: ' + errMsg(e) + (done.length ? ' Already restored: ' + done.join('; ') + '.' : ''), true); draw(); });
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target.id !== 'bkFile') return;
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    if (f.size > 25 * 1024 * 1024) { toast('That file is too large to be a backup.', true); return; }
+    var r = new FileReader();
+    r.onload = function () {
+      try { var b = bkParse(String(r.result)); S.bk = { name: f.name, data: b, sel: { menu: !!b.site.menu, cel: !!b.site.cel, set: !!b.site.set, staff: b.staff.length > 0, orders: b.orders.length > 0, res: b.reservations.length > 0 } }; }
+      catch (err) { S.bk = null; toast(err.message, true); }
+      draw();
+    };
+    r.readAsText(f);
   });
 
   /* chart tooltip: shows on hover and on keyboard focus */
