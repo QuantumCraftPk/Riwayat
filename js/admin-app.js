@@ -32,7 +32,7 @@
 
   /* ---------- login ---------- */
   function showLogin(msg) {
-    clearInterval(timer); if (window.RiwayatAlerts) window.RiwayatAlerts.reset(); S.bk = null; $('#login').hidden = false; $('#app').hidden = true; $('#btnOut').hidden = true; $('#who').textContent = '';
+    clearInterval(timer); if (window.RiwayatAlerts) window.RiwayatAlerts.reset(); S.bk = null; S.acc = null; $('#login').hidden = false; $('#app').hidden = true; $('#btnOut').hidden = true; $('#who').textContent = '';
     var e = $('#lErr'); e.hidden = !msg; e.textContent = msg || '';
   }
   function friendly(e) {
@@ -111,7 +111,7 @@
   });
 
   /* ---------- tabs ---------- */
-  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel'], ['backup', 'Backup'], ['staff', 'Staff']];
+  var TABS = [['orders', 'Orders'], ['res', 'Reservations'], ['dash', 'Dashboard'], ['menu', 'Menu'], ['prices', 'Prices & Sold out'], ['cel', 'Celebrations'], ['set', 'Settings'], ['export', 'Excel'], ['backup', 'Backup'], ['access', 'Access'], ['staff', 'Staff']];
   function visibleTabs() { return isAdminRole() ? TABS : TABS.filter(function (t) { return t[0] === 'orders' || t[0] === 'res'; }); }
   function drawTabs() {
     var n1 = S.orders.filter(function (o) { return o._status === 'new'; }).length, n2 = S.res.filter(function (o) { return o._status === 'new'; }).length;
@@ -204,6 +204,46 @@
   };
   function saveStaff(list, msg) {
     return FS.update('config/staff', { emails: list }).then(function () { S.staff = list; toast(msg); draw(); }, function (e) { toast(errMsg(e), true); });
+  }
+
+
+  /* ---------- private access gate (pass codes) ---------- */
+  function accLoad() {
+    if (S.accBusy) return; S.accBusy = true;
+    window.RiwayatAccess.load().then(function (c) { S.acc = { on: !!c.on, c: c.c || [] }; }, function () { S.acc = { on: false, c: [], err: true }; }).then(function () { S.accBusy = false; if (S.tab === 'access') draw(); });
+  }
+  V.access = function () {
+    if (!isAdminRole()) return '<p class="mute">Only the administrator can use this page.</p>';
+    if (!S.acc) { accLoad(); return '<h2>Private access</h2><p class="mute">Loading…</p>'; }
+    var a = S.acc, c = a.c || [], s1 = !!(c[0] && c[0].h), s2 = !!(c[1] && c[1].h);
+    var codeBox = function (i, set) { return '<div class="ed"><h3 style="margin-top:0">Code ' + (i + 1) + ' <span class="mute" style="font-size:.9rem">(' + (set ? 'set' : 'not set') + ')</span></h3><label for="acC' + (i + 1) + '">' + (set ? 'New code (leave empty to keep the current one)' : 'Type a code') + '</label><input id="acC' + (i + 1) + '" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" placeholder="At least 8 characters"' + '>' + (set ? '<p style="margin:8px 0 0"><button class="btn btn-ghost btn-sm" data-act="accclear" data-i="' + i + '">Remove code ' + (i + 1) + '</button></p>' : '') + '</div>'; };
+    return '<h2>Private access</h2>' + (a.err ? '<div class="adm-err">The current setting could not be read. Check your internet connection and reload.</div>' : '') +
+      '<p class="mute">While the gate is <b>on</b>, anyone opening the website or this admin page must first enter one of two pass codes (no user name). The admin sign-in is still needed after that. Codes are stored scrambled, so nobody can read them back, not even here.</p>' +
+      '<div class="ed"><label style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="acOn"' + (a.on ? ' checked' : '') + ' style="width:auto"> <span><b>Require a pass code</b> to open the website and the admin page</span></label>' +
+      '<p class="mute" style="margin:8px 0 0">Status now: <b>' + (a.on ? 'ON, the website is private' : 'OFF, the website is open to everyone') + '</b>.</p></div>' +
+      codeBox(0, s1) + codeBox(1, s2) +
+      '<p><button class="btn btn-gold" data-act="accsave">Save access settings</button></p>' +
+      '<p class="mute">Each visitor is asked again every time they close and reopen their browser. Changing or removing a code signs out everyone who used that code. To test, open the website in a private window.</p>' +
+      '<p class="mute">Locked out? In Firebase → Firestore Database → <b>site</b> → <b>access</b>, change the field <b>json</b> to <b>{"on":false}</b> and the gate switches off.</p>';
+  };
+  function accSave(el, clearIdx) {
+    var cur = ((S.acc && S.acc.c) || []).slice(0, 2), next = [cur[0] || null, cur[1] || null], on = $('#acOn') ? $('#acOn').checked : !!(S.acc && S.acc.on);
+    var vals = [($('#acC1') ? $('#acC1').value : '').trim(), ($('#acC2') ? $('#acC2').value : '').trim()], bad = '';
+    if (clearIdx != null) { next[clearIdx] = null; vals[clearIdx] = ''; }
+    vals.forEach(function (v, i) { if (v && v.length < 8) bad = 'Code ' + (i + 1) + ' must be at least 8 characters.'; });
+    if (!bad && vals[0] && vals[0] === vals[1]) bad = 'The two codes must be different.';
+    if (bad) { toast(bad, true); return; }
+    el.disabled = true;
+    var A = window.RiwayatAccess, p = Promise.resolve();
+    vals.forEach(function (v, i) {
+      if (!v) return;
+      p = p.then(function () { var o = next[1 - i]; return o && o.h ? A.hash(v, o.s).then(function (h) { if (h === o.h) throw new Error('The two codes must be different.'); }) : null; })
+        .then(function () { var salt = A.newSalt(); return A.hash(v, salt).then(function (h) { next[i] = { s: salt, h: h, v: Date.now() + i }; }); });
+    });
+    p.then(function () {
+      if (on && !(next[0] && next[0].h) && !(next[1] && next[1].h)) throw new Error('Set at least one code before turning the gate on.');
+      return FS.update('site/access', { json: JSON.stringify({ on: on, c: next }) });
+    }).then(function () { S.acc = { on: on, c: next }; toast(on ? 'Saved. The website now asks for a pass code.' : 'Saved. The gate is off.'); draw(); }, function (e) { el.disabled = false; toast(e && e.message && !e.status ? e.message : errMsg(e), true); });
   }
 
   /* sales dashboard */
@@ -513,6 +553,8 @@
       case 'bkdl': el.disabled = true; el.textContent = 'Preparing…';
         bkSnapshot().then(function (b) { var nm = bkDownload(b, 'riwayat-backup'); try { localStorage.setItem(BK_KEY, new Date().toISOString()); } catch (x) {} toast('Backup downloaded: ' + nm + ' (' + b.orders.length + ' orders, ' + b.reservations.length + ' reservations)'); draw(); }, function (err) { toast('Backup failed: ' + errMsg(err), true); el.disabled = false; el.textContent = '⬇ Download backup'; }); break;
       case 'bkrestore': bkRestore(el); break;
+      case 'accsave': accSave(el); break;
+      case 'accclear': accSave(el, +el.getAttribute('data-i')); break;
       case 'bkclear': S.bk = null; draw(); break;
       case 'bulk': bulkApply(); break;
       case 'additem': var g = M.categories[ci].groups[gi]; g.items.push({ id: slug(M.categories[ci].id + '-new-dish') + '-' + Date.now().toString(36), name: 'New dish', desc: '', price: 0 }); mark('menu'); S.q = ''; draw(); break;

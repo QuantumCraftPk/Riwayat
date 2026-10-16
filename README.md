@@ -21,6 +21,9 @@ Sign in with the administrator account (Firebase Authentication). Tabs:
 - Excel: spreadsheet of orders, items and reservations (for reporting)
 - Backup: download one JSON file with everything; restore with preview, tick boxes and an automatic safety copy
 - Staff: staff accounts can see orders and reservations and change their status only
+- Access (private preview): a pass-code screen (two codes, no user name) in front of the website and the admin page. Set or change the codes and switch the gate on or off in Admin → Access. Codes are stored hashed in `site/access`. The code is asked again each time the browser is closed.
+  - Locked out? In Firebase → Firestore → `site/access`, set the field `json` to `{"on":false}`.
+  - When the site goes public: switch the gate off in Admin → Access and delete the `noindex` line near the top of `index.html`, `menu.html` and `order.html`.
 
 ## Backend
 - Firebase project `riwayat-41034` (Firestore + Authentication) over plain REST (`js/fs.js`). No SDK, no server.
